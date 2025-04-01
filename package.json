@@ -1,0 +1,62 @@
+{
+  "name": "custom-search-filters",
+  "displayName": "custom-search-filters",
+  "description": "nice filter",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.98.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:custom-search-filters.addFilter",
+    "onCommand:custom-search-filters.selectAndSearch",
+    "onCommand:custom-search-filters.deleteFilter"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "custom-search-filters.addFilter",
+        "title": "Add Custom Search Filter"
+      },
+      {
+        "command": "custom-search-filters.selectAndSearch",
+        "title": "Select Filter and Search"
+      },
+      {
+        "command": "custom-search-filters.deleteFilter",
+        "title": "Delete Custom Search Filter"
+      }
+    ]
+  },
+  "menus": {
+    "editor/title": [
+      {
+        "command": "custom-search-filters.selectAndSearch",
+        "group": "navigation",
+        "icon": "$(filter)" 
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.98.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^8.28.0",
+    "@typescript-eslint/parser": "^8.28.0",
+    "eslint": "^9.23.0",
+    "typescript": "^5.8.2",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1"
+  }
+}
