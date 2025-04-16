@@ -6,3 +6,4 @@ All notable changes to the "custom-search-filters" extension will be documented 
     - Add custom search filters
     - Select and search with a custom filter
     - Delete a custom filter
+    - Add combineFilters command

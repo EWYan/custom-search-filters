@@ -2,9 +2,10 @@
   "name": "custom-search-filters",
   "displayName": "custom-search-filters",
   "description": "nice filter",
-  "version": "0.0.1",
+  "publisher": "juzidaxia",
+  "version": "0.0.2",
   "engines": {
-    "vscode": "^1.98.0"
+    "vscode": "^1.96.0"
   },
   "categories": [
     "Other"
@@ -12,7 +13,8 @@
   "activationEvents": [
     "onCommand:custom-search-filters.addFilter",
     "onCommand:custom-search-filters.selectAndSearch",
-    "onCommand:custom-search-filters.deleteFilter"
+    "onCommand:custom-search-filters.deleteFilter",
+    "onCommand:custom-search-filters.combineFilters"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -28,6 +30,10 @@
       {
         "command": "custom-search-filters.deleteFilter",
         "title": "Delete Custom Search Filter"
+      },
+      {
+        "command": "custom-search-filters.combineFilters",
+        "title": "Combine Custom Search Filters"
       }
     ]
   },
@@ -49,7 +55,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.98.0",
+    "@types/vscode": "^1.96.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@typescript-eslint/eslint-plugin": "^8.28.0",

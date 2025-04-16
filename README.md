@@ -11,5 +11,6 @@
     - Search for a string in the current file
 - Delete a custom filter(Ctrl+Shift+P -> "Delete Custom Search Filter")
     - Delete a filter from the command palette
+- Combine filters(Ctrl+Shift+P -> "Combine Filters")
 
 **Enjoy!**

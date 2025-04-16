@@ -1,3 +1,4 @@
+// Author: juzidaxia
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
@@ -164,6 +165,90 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(deleteFilterDisposable); // Register the new command
+
+	// Command to combine existing filters
+	const combineFiltersDisposable = vscode.commands.registerCommand('custom-search-filters.combineFilters', async () => {
+		// 1. Retrieve saved filters
+		let savedFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+
+		if (savedFilters.length < 2) {
+			vscode.window.showInformationMessage('You need at least two existing filters to combine.');
+			return;
+		}
+
+		// 2. Prepare Quick Pick items for multi-selection
+		const quickPickItems = savedFilters.map(filter => ({ 
+			label: filter.name, 
+			description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`, 
+			filter: filter // Store the actual filter object
+		}));
+
+		// 3. Show Quick Pick to select multiple filters to combine
+		const selectedItems = await vscode.window.showQuickPick(quickPickItems, { 
+			placeHolder: 'Select filters to combine (use Spacebar to select)',
+			canPickMany: true // Enable multi-select
+		});
+
+		if (!selectedItems || selectedItems.length < 2) { 
+			vscode.window.showInformationMessage('Combine operation cancelled. You must select at least two filters.');
+			return; 
+		}
+
+		// 4. Prompt for the new combined filter name
+		const combinedFilterName = await vscode.window.showInputBox({ 
+			prompt: 'Enter a name for the combined filter',
+			placeHolder: 'e.g., Combined Frontend Filters',
+			validateInput: text => {
+				return text && text.trim().length > 0 ? null : 'Filter name cannot be empty.';
+			}
+		});
+		if (!combinedFilterName) { return; } // User cancelled
+
+		// 5. Combine include and exclude patterns
+		const combinedInclude = selectedItems
+			.map(item => item.filter.include)
+			.filter(pattern => pattern && pattern.trim() !== '') // Filter out empty includes
+			.join(','); // Join with comma
+			
+		const combinedExclude = selectedItems
+			.map(item => item.filter.exclude)
+			.filter(pattern => pattern && pattern.trim() !== '') // Filter out empty excludes
+			.join(','); // Join with comma
+
+		// 6. Create the new filter object
+		const newFilter: SearchFilter = {
+			name: combinedFilterName.trim(),
+			include: combinedInclude,
+			exclude: combinedExclude
+		};
+
+		// 7. Save the new filter (handle potential name conflicts)
+		try {
+			// Check if filter name already exists
+			const existingIndex = savedFilters.findIndex(f => f.name === newFilter.name);
+			if (existingIndex > -1) {
+				const overwrite = await vscode.window.showQuickPick(['Yes', 'No'], {
+					placeHolder: `Filter '${newFilter.name}' already exists. Overwrite?`
+				});
+				if (overwrite === 'Yes') {
+					savedFilters[existingIndex] = newFilter;
+				} else {
+					vscode.window.showInformationMessage('Combined filter not saved.');
+					return; // Don't save if not overwriting
+				}
+			} else {
+				savedFilters.push(newFilter);
+			}
+
+			await context.globalState.update(FILTERS_STORAGE_KEY, savedFilters);
+			vscode.window.showInformationMessage(`Combined filter '${newFilter.name}' saved successfully!`);
+		} catch (error) {
+			console.error('Error saving combined search filter:', error);
+			vscode.window.showErrorMessage('Failed to save combined filter. See console for details.');
+		}
+	});
+
+	context.subscriptions.push(combineFiltersDisposable); // Register the combine command
 }
 
 // This method is called when your extension is deactivated
