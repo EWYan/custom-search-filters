@@ -3,9 +3,9 @@
   "displayName": "custom-search-filters",
   "description": "nice filter",
   "publisher": "juzidaxia",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "engines": {
-    "vscode": "^1.96.0"
+    "vscode": "^1.96.2"
   },
   "categories": [
     "Other"
@@ -14,37 +14,64 @@
     "onCommand:custom-search-filters.addFilter",
     "onCommand:custom-search-filters.selectAndSearch",
     "onCommand:custom-search-filters.deleteFilter",
-    "onCommand:custom-search-filters.combineFilters"
+    "onCommand:custom-search-filters.combineFilters",
+    "onCommand:custom-search-filters.addFolderToInclude",
+    "onCommand:custom-search-filters.addFolderToExclude",
+    "onCommand:custom-search-filters.editFilter"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "custom-search-filters.addFilter",
-        "title": "Add Custom Search Filter"
+        "title": "Custom Search: Add Filter"
       },
       {
         "command": "custom-search-filters.selectAndSearch",
-        "title": "Select Filter and Search"
+        "title": "Custom Search: Select Filter and Search"
       },
       {
         "command": "custom-search-filters.deleteFilter",
-        "title": "Delete Custom Search Filter"
+        "title": "Custom Search: Delete Filter"
       },
       {
         "command": "custom-search-filters.combineFilters",
-        "title": "Combine Custom Search Filters"
-      }
-    ]
-  },
-  "menus": {
-    "editor/title": [
+        "title": "Custom Search: Combine Filters"
+      },
       {
-        "command": "custom-search-filters.selectAndSearch",
-        "group": "navigation",
-        "icon": "$(filter)" 
+        "command": "custom-search-filters.addFolderToInclude",
+        "title": "Custom Search: Add Folder to Include Filter"
+      },
+      {
+        "command": "custom-search-filters.addFolderToExclude",
+        "title": "Custom Search: Add Folder to Exclude Filter"
+      },
+      {
+        "command": "custom-search-filters.editFilter",
+        "title": "Custom Search: Edit Filter"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "custom-search-filters.selectAndSearch",
+          "group": "navigation",
+          "icon": "$(filter)" 
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "custom-search-filters.addFolderToInclude",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@5"
+        },
+        {
+          "command": "custom-search-filters.addFolderToExclude",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@6"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
