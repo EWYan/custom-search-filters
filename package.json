@@ -3,7 +3,7 @@
   "displayName": "custom-search-filters",
   "description": "nice filter",
   "publisher": "juzidaxia",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "vscode": "^1.96.2"
   },
@@ -17,7 +17,9 @@
     "onCommand:custom-search-filters.combineFilters",
     "onCommand:custom-search-filters.addFolderToInclude",
     "onCommand:custom-search-filters.addFolderToExclude",
-    "onCommand:custom-search-filters.editFilter"
+    "onCommand:custom-search-filters.editFilter",
+    "onCommand:custom-search-filters.addFileTypeToInclude",
+    "onCommand:custom-search-filters.addFileTypeToExclude"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -49,6 +51,14 @@
       {
         "command": "custom-search-filters.editFilter",
         "title": "Custom Search: Edit Filter"
+      },
+      {
+        "command": "custom-search-filters.addFileTypeToInclude",
+        "title": "Custom Search: Add File Type to Include Filter"
+      },
+      {
+        "command": "custom-search-filters.addFileTypeToExclude",
+        "title": "Custom Search: Add File Type to Exclude Filter"
       }
     ],
     "menus": {
@@ -69,6 +79,16 @@
           "command": "custom-search-filters.addFolderToExclude",
           "when": "explorerResourceIsFolder",
           "group": "navigation@6"
+        },
+        {
+          "command": "custom-search-filters.addFileTypeToInclude",
+          "when": "resourceExtname != ''",
+          "group": "navigation@7"
+        },
+        {
+          "command": "custom-search-filters.addFileTypeToExclude",
+          "when": "resourceExtname != ''",
+          "group": "navigation@8"
         }
       ]
     }

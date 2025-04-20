@@ -29,5 +29,13 @@ All commands can be accessed via the Command Palette (Ctrl+Shift+P or Cmd+Shift+
     *   Right-click a folder in the File Explorer.
     *   Choose this option to select an existing filter (or create a new one).
     *   You'll be prompted to either append the selected folder's path (as `**/foldername/**/*`) to the filter's exclude pattern or overwrite the existing pattern.
+*   **Custom Search: Add File Type to Include Filter** (Explorer Context Menu):
+    *   Right-click a file in the File Explorer.
+    *   Choose this option to select an existing filter (or create a new one).
+    *   You'll be prompted to either append the selected file's extension (as `*.extension`) to the filter's include pattern or overwrite the existing pattern.
+*   **Custom Search: Add File Type to Exclude Filter** (Explorer Context Menu):
+    *   Right-click a file in the File Explorer.
+    *   Choose this option to select an existing filter (or create a new one).
+    *   You'll be prompted to either append the selected file's extension (as `*.extension`) to the filter's exclude pattern or overwrite the existing pattern.
 
 **Enjoy!**

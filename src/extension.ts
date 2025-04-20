@@ -163,6 +163,94 @@ async function addFolderToFilter(folderUri: vscode.Uri | undefined, targetPatter
 	}
 }
 
+// NEW Helper function to handle adding file type to include/exclude
+async function addFileTypeToFilter(fileUri: vscode.Uri | undefined, targetPattern: 'include' | 'exclude', context: vscode.ExtensionContext) {
+	if (!fileUri) {
+        // Should not happen due to 'when' clause, but good practice
+		vscode.window.showErrorMessage('Please run this command by right-clicking a file in the Explorer.');
+		return;
+	}
+
+    // 1. Extract file extension
+    const fileExtension = path.extname(fileUri.fsPath);
+    if (!fileExtension) {
+        // Should not happen due to 'when' clause
+		vscode.window.showErrorMessage('Cannot add filter: The selected file does not have an extension.');
+        return;
+    }
+
+    // 2. Create glob pattern (e.g., **/*.ts)
+    const fileTypePattern = `**/*${fileExtension}`; // Includes the dot already
+
+	// 3. Retrieve saved filters
+	const savedFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+
+	// 4. Prepare Quick Pick items: existing filters + Create New
+	const createNewOption = { label: "$(add) Create New Filter...", description: `Create a new filter and add '${fileTypePattern}'`, name: null };
+	const quickPickItems = [
+		createNewOption,
+		...savedFilters.map(filter => ({
+			label: filter.name,
+			description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`, // Fixed typo
+			filter: filter
+		}))
+	];
+
+	// 5. Show Quick Pick to select a filter or create new
+	const selectedItem = await vscode.window.showQuickPick(quickPickItems, {
+		placeHolder: `Select filter to add file type '${fileTypePattern}' to '${targetPattern}' pattern, or create a new one`
+	});
+
+	if (!selectedItem) { return; } // User cancelled
+
+	// 6. Handle selection
+	if (selectedItem === createNewOption) {
+		// Create a new filter
+		const filterName = await vscode.window.showInputBox({
+			prompt: 'Enter a name for the new search filter',
+			validateInput: text => text && text.trim().length > 0 ? null : 'Filter name cannot be empty.'
+		});
+		if (!filterName) { return; } // User cancelled
+
+		const newFilter: SearchFilter = { name: filterName.trim(), include: '', exclude: '' };
+
+		if (targetPattern === 'include') {
+			newFilter.include = fileTypePattern;
+			const excludePattern = await vscode.window.showInputBox({ prompt: `(Optional) Enter files to exclude for new filter '${filterName}'` });
+			newFilter.exclude = excludePattern || '';
+		} else { // targetPattern === 'exclude'
+			newFilter.exclude = fileTypePattern;
+			const includePattern = await vscode.window.showInputBox({ prompt: `(Optional) Enter files to include for new filter '${filterName}'` });
+			newFilter.include = includePattern || '';
+		}
+		await saveFilter(context, newFilter);
+
+	} else if ('filter' in selectedItem && selectedItem.filter) {
+		// Add to existing filter
+		const filterToUpdate = selectedItem.filter;
+		const currentPattern = targetPattern === 'include' ? filterToUpdate.include : filterToUpdate.exclude;
+
+        // Ask how to add the path (Append/Overwrite)
+        const addMethod = await vscode.window.showQuickPick(
+            [
+                { label: 'Append (Combine)', description: `Result: ${appendToPattern(currentPattern, fileTypePattern)}`, action: 'append' },
+                { label: 'Overwrite', description: `Result: ${fileTypePattern}`, action: 'overwrite' }
+            ],
+            { placeHolder: `How to add '${fileTypePattern}' to the '${targetPattern}' pattern for filter '${filterToUpdate.name}'?` }
+        );
+
+        if (!addMethod) { return; } // User cancelled
+
+		// Update the pattern based on choice
+		if (targetPattern === 'include') {
+            filterToUpdate.include = (addMethod.action === 'append') ? appendToPattern(filterToUpdate.include, fileTypePattern) : fileTypePattern;
+		} else { // targetPattern === 'exclude'
+            filterToUpdate.exclude = (addMethod.action === 'append') ? appendToPattern(filterToUpdate.exclude, fileTypePattern) : fileTypePattern;
+		}
+		await saveFilter(context, filterToUpdate); // Save the updated filter
+	}
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -363,7 +451,17 @@ export function activate(context: vscode.ExtensionContext) {
 		addFolderToFilter(folderUri, 'exclude', context);
 	});
 	context.subscriptions.push(addFolderToExcludeDisposable);
-	// --- END NEW Commands ---
+
+	// NEW: File Type context menu commands
+	const addFileTypeToIncludeDisposable = vscode.commands.registerCommand('custom-search-filters.addFileTypeToInclude', (fileUri: vscode.Uri | undefined) => {
+		addFileTypeToFilter(fileUri, 'include', context);
+	});
+	context.subscriptions.push(addFileTypeToIncludeDisposable);
+
+	const addFileTypeToExcludeDisposable = vscode.commands.registerCommand('custom-search-filters.addFileTypeToExclude', (fileUri: vscode.Uri | undefined) => {
+		addFileTypeToFilter(fileUri, 'exclude', context);
+	});
+	context.subscriptions.push(addFileTypeToExcludeDisposable);
 
 	// --- NEW: Command to Edit an Existing Filter ---
 	const editFilterDisposable = vscode.commands.registerCommand('custom-search-filters.editFilter', async () => {
