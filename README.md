@@ -22,20 +22,20 @@ All commands can be accessed via the Command Palette (Ctrl+Shift+P or Cmd+Shift+
     *   Shows a list of your saved filters.
     *   Selecting a filter allows you to modify its name, include pattern, and exclude pattern via input boxes.
 *   **Custom Search: Add Folder to Include Filter** (Explorer Context Menu):
-    *   Right-click a folder in the File Explorer.
+    *   Right-click one or more folders in the File Explorer.
     *   Choose this option to select an existing filter (or create a new one).
-    *   You'll be prompted to either append the selected folder's path (as `**/foldername/**/*`) to the filter's include pattern or overwrite the existing pattern.
+    *   You'll be prompted to either append the selected folder path(s) (e.g., `folder1/**/*,folder2/**/*`) to the filter's include pattern or overwrite the existing pattern. Duplicates are skipped when appending.
 *   **Custom Search: Add Folder to Exclude Filter** (Explorer Context Menu):
-    *   Right-click a folder in the File Explorer.
+    *   Right-click one or more folders in the File Explorer.
     *   Choose this option to select an existing filter (or create a new one).
-    *   You'll be prompted to either append the selected folder's path (as `**/foldername/**/*`) to the filter's exclude pattern or overwrite the existing pattern.
+    *   You'll be prompted to either append the selected folder path(s) to the filter's exclude pattern or overwrite the existing pattern. Duplicates are skipped when appending.
 *   **Custom Search: Add File Type to Include Filter** (Explorer Context Menu):
-    *   Right-click a file in the File Explorer.
+    *   Right-click one or more files (with extensions) in the File Explorer.
     *   Choose this option to select an existing filter (or create a new one).
-    *   You'll be prompted to either append the selected file's extension (as `*.extension`) to the filter's include pattern or overwrite the existing pattern.
+    *   You'll be prompted to either append the selected file type(s) (e.g., `**/*.ts,**/*.js`) to the filter's include pattern or overwrite the existing pattern. Duplicates are skipped when appending.
 *   **Custom Search: Add File Type to Exclude Filter** (Explorer Context Menu):
-    *   Right-click a file in the File Explorer.
+    *   Right-click one or more files (with extensions) in the File Explorer.
     *   Choose this option to select an existing filter (or create a new one).
-    *   You'll be prompted to either append the selected file's extension (as `*.extension`) to the filter's exclude pattern or overwrite the existing pattern.
+    *   You'll be prompted to either append the selected file type(s) to the filter's exclude pattern or overwrite the existing pattern. Duplicates are skipped when appending.
 
 **Enjoy!**
