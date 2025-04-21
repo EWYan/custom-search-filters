@@ -560,74 +560,97 @@ export function activate(context: vscode.ExtensionContext) {
 			placeHolder: 'Select a custom search filter to edit' 
 		});
 
-		if (!selectedItem) { return; } // User cancelled
+		if (!selectedItem) { return; } 
 
 		const originalFilter = selectedItem.filter;
-		const originalName = originalFilter.name; // Keep track of the original name
+		const originalName = originalFilter.name; 
 
 		// 4. Prompt for potentially new Filter Name (pre-filled)
-		const newFilterName = await vscode.window.showInputBox({ 
+		const newFilterName = await vscode.window.showInputBox({
 			prompt: 'Enter the new name for the search filter',
 			value: originalFilter.name, // Pre-fill with current name
 			validateInput: text => {
 				return text && text.trim().length > 0 ? null : 'Filter name cannot be empty.';
-			}
+			},
+            ignoreFocusOut: true // Keep open on focus loss
 		});
-		if (!newFilterName) { return; } // User cancelled
+		// *** Only cancel the entire edit if the NAME prompt is cancelled or explicitly empty ***
+		if (newFilterName === undefined) { 
+            vscode.window.showInformationMessage('Edit cancelled.');
+            return; 
+        }
+        // Re-validate trimmed name just in case validateInput allowed spaces
+        if (!newFilterName.trim()){
+             vscode.window.showErrorMessage('Filter name cannot be empty.');
+             return; 
+        }
 
 		// 5. Prompt for potentially new Include Pattern (pre-filled)
-		const newIncludePattern = await vscode.window.showInputBox({ 
+		const newIncludePattern = await vscode.window.showInputBox({
 			prompt: 'Enter the new files to include (glob pattern)',
 			value: originalFilter.include, // Pre-fill
-			placeHolder: 'Leave blank for default (e.g., src/**/*.ts)'
+			placeHolder: '(Optional) Leave blank for default; Esc to keep original',
+            ignoreFocusOut: true // Keep open on focus loss
 		});
-		// Allow cancellation (undefined) -> keep original? No, treat as empty string if undefined.
-        const finalIncludePattern = newIncludePattern === undefined ? originalFilter.include : newIncludePattern || '';
+        // *** If Esc is pressed (undefined), keep original value. Otherwise, use input (or empty string). ***
+        const finalIncludePattern = newIncludePattern === undefined ? originalFilter.include : (newIncludePattern || '');
 
 
 		// 6. Prompt for potentially new Exclude Pattern (pre-filled)
-		const newExcludePattern = await vscode.window.showInputBox({ 
+		const newExcludePattern = await vscode.window.showInputBox({
 			prompt: 'Enter the new files to exclude (glob pattern)',
 			value: originalFilter.exclude, // Pre-fill
-			placeHolder: 'Leave blank for default (e.g., **/node_modules/**)'
+			placeHolder: '(Optional) e.g., **/node_modules/**; Esc to keep original',
+            ignoreFocusOut: true // Keep open on focus loss
 		});
-        // Allow cancellation (undefined) -> keep original? No, treat as empty string if undefined.
-        const finalExcludePattern = newExcludePattern === undefined ? originalFilter.exclude : newExcludePattern || '';
+        // *** If Esc is pressed (undefined), keep original value. Otherwise, use input (or empty string). ***
+        const finalExcludePattern = newExcludePattern === undefined ? originalFilter.exclude : (newExcludePattern || '');
+		console.log('[EditFilter Debug] Final exclude pattern:', finalExcludePattern); // <-- ADDED LOG
 
-
-		// 7. Create the updated filter object
+        // --- Create updated filter, check name conflicts, save (logic remains the same) ---
         const updatedFilter: SearchFilter = {
-			name: newFilterName.trim(),
-			include: finalIncludePattern, 
+			name: newFilterName.trim(), // Trim the validated name
+			include: finalIncludePattern,
 			exclude: finalExcludePattern
 		};
+        console.log('[EditFilter Debug] Constructed updated filter:', updatedFilter); // <-- ADDED LOG
 
 		// 8. Handle potential name conflicts if the name was changed
         if (originalName !== updatedFilter.name) {
+            console.log('[EditFilter Debug] Name changed. Checking conflict for:', updatedFilter.name); // <-- ADDED LOG
             const conflictingFilterExists = savedFilters.some(f => f.name === updatedFilter.name);
             if (conflictingFilterExists) {
+                console.error('[EditFilter Debug] Name conflict detected.'); // <-- ADDED LOG
                 vscode.window.showErrorMessage(`A filter with the name '${updatedFilter.name}' already exists. Please choose a different name.`);
                 return; // Stop the edit process
             }
+        } else {
+             console.log('[EditFilter Debug] Name not changed, skipping conflict check.'); // <-- ADDED LOG
         }
 
 		// 9. Find the original filter in the array and update it
 		try {
-            const indexToUpdate = savedFilters.findIndex(f => f.name === originalName); 
+            console.log('[EditFilter Debug] Attempting to find original filter with name:', originalName); // <-- ADDED LOG
+            const indexToUpdate = savedFilters.findIndex(f => f.name === originalName);
+            console.log('[EditFilter Debug] Found index:', indexToUpdate); // <-- ADDED LOG
+
             if (indexToUpdate > -1) {
                 savedFilters[indexToUpdate] = updatedFilter; // Replace with the updated version
+                console.log('[EditFilter Debug] Attempting to update globalState...'); // <-- ADDED LOG
                 await context.globalState.update(FILTERS_STORAGE_KEY, savedFilters);
+                console.log('[EditFilter Debug] globalState update successful.'); // <-- ADDED LOG
 			    vscode.window.showInformationMessage(`Search filter '${updatedFilter.name}' updated successfully!`);
             } else {
+                console.error('[EditFilter Debug] Original filter not found in savedFilters array.'); // <-- ADDED LOG
                 // Should theoretically not happen if selection worked
                 vscode.window.showErrorMessage(`Could not find the original filter '${originalName}' to update.`);
             }
 		} catch (error) {
-			console.error('Error updating search filter:', error);
+			console.error('[EditFilter Debug] Error during update/save:', error); // <-- ADDED LOG
 			vscode.window.showErrorMessage('Failed to update search filter. See console for details.');
 		}
 	});
-	context.subscriptions.push(editFilterDisposable); // Register the new command
+	context.subscriptions.push(editFilterDisposable);
     // --- END NEW Command ---
 
 	// Add all disposables to subscriptions
