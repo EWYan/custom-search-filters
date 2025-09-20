@@ -28,3 +28,7 @@ All notable changes to the "custom-search-filters" extension will be documented 
 
 ### Fixed
 - Fixed bug where edit filter command was not working.
+
+## [0.1.3] - 2025-09-20
+### Fixed
+- Fixed folder detection issue where folders with dots in their names (e.g., "my.folder") were incorrectly identified as files. Now uses `fs.statSync()` to properly check if a path is a directory instead of relying on `path.extname()`.

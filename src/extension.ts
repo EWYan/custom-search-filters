@@ -78,8 +78,10 @@ async function addFolderToFilter(targetUriOrUris: vscode.Uri | vscode.Uri[] | un
     const folderPatterns: string[] = [];
     for (const uri of folderUris) {
         try {
-            // Basic check if it's a folder path structure, fs.stat might be too slow for many items
-            if (uri.fsPath && !path.extname(uri.fsPath)) { // A simple heuristic
+            // Use fs.stat to properly check if it's a folder, since path.extname() fails for folders with dots
+            const fs = require('fs');
+            const stats = fs.statSync(uri.fsPath);
+            if (stats.isDirectory()) {
                 let relativePath = vscode.workspace.asRelativePath(uri, false);
                 if (relativePath) { // Ensure it's within the workspace
                     const pattern = path.posix.join(relativePath, '**', '*');
