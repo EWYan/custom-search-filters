@@ -3,44 +3,320 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as path from 'path'; // Need path module for normalization
+import * as fs from 'fs'; // Need fs module for file operations
 
 // Define the structure for a search filter
 interface SearchFilter {
 	name: string;
 	include: string; // Glob pattern for files to include
 	exclude: string; // Glob pattern for files to exclude
+	scope?: 'global' | 'workspace'; // Scope of the filter: global or workspace-specific
+	enabled?: boolean; // Whether the filter is enabled (only for global filters, shown in settings with checkbox)
 }
 
-// Key for storing filters in global state
+// Key for storing filters in global state (for migration purposes)
 const FILTERS_STORAGE_KEY = 'customSearchFilters';
+const PROJECT_FILTERS_FILE = '.vscode/custom-search-filters.json';
+const GLOBAL_FILTERS_CONFIG_KEY = 'custom-search-filters.globalFilters';
 
-// Helper function to save filters and handle overwrites
-async function saveFilter(context: vscode.ExtensionContext, newFilter: SearchFilter): Promise<boolean> {
-	let existingFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
-	const existingIndex = existingFilters.findIndex(f => f.name === newFilter.name);
+// Helper function to get workspace root folder
+function getWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+	const workspaceFolders = vscode.workspace.workspaceFolders;
+	return workspaceFolders && workspaceFolders.length > 0 ? workspaceFolders[0] : undefined;
+}
 
-	if (existingIndex > -1) {
-		const overwrite = await vscode.window.showQuickPick(['Yes', 'No'], {
-			placeHolder: `Filter '${newFilter.name}' already exists. Overwrite?`
+// Helper function to get project filters file path
+function getProjectFiltersPath(): string | undefined {
+	const workspaceFolder = getWorkspaceFolder();
+	if (!workspaceFolder) {
+		return undefined;
+	}
+	return path.join(workspaceFolder.uri.fsPath, PROJECT_FILTERS_FILE);
+}
+
+// Helper function to load global-scoped filters from VS Code settings
+function loadGlobalFilters(): SearchFilter[] {
+	try {
+		const config = vscode.workspace.getConfiguration('custom-search-filters');
+		const filters: SearchFilter[] = config.get<SearchFilter[]>('globalFilters', []);
+		const enabledMap: Record<string, boolean> = config.get<Record<string, boolean>>('globalFiltersEnabled', {});
+		
+		// Merge filters with enabled state from separate config
+		return filters.map(f => {
+			const filterName = f.name;
+			// Check enabled state: if explicitly set in enabledMap, use it; otherwise default to true
+			const enabled = enabledMap.hasOwnProperty(filterName) ? enabledMap[filterName] : true;
+			
+			return { 
+				...f, 
+				scope: f.scope || 'global',
+				enabled: enabled
+			};
 		});
-		if (overwrite === 'Yes') {
-			existingFilters[existingIndex] = newFilter;
-		} else {
-			vscode.window.showInformationMessage('Filter not saved.');
-			return false; // Indicate not saved
+	} catch (error) {
+		console.error('Error loading global filters from settings:', error);
+		return [];
+	}
+}
+
+// Helper function to save global-scoped filters to VS Code settings
+async function saveGlobalFilters(filters: SearchFilter[]): Promise<boolean> {
+	try {
+		const config = vscode.workspace.getConfiguration('custom-search-filters');
+		// Only save global-scoped filters
+		const globalFilters = filters.filter(f => (f.scope || 'global') === 'global');
+		
+		// Separate filters and enabled state
+		const filtersToSave = globalFilters.map(f => {
+			// Remove enabled from filter object (it's stored separately)
+			const { enabled, ...filterWithoutEnabled } = f;
+			return filterWithoutEnabled;
+		});
+		
+		// Build enabled state map - store ALL filters (both enabled and disabled)
+		const enabledMap: Record<string, boolean> = {};
+		globalFilters.forEach(f => {
+			// Store all filters in enabledMap, default to true if not specified
+			enabledMap[f.name] = f.enabled !== undefined ? f.enabled : true;
+		});
+		
+		// Update both configs in global scope (user settings)
+		await config.update('globalFilters', filtersToSave, vscode.ConfigurationTarget.Global);
+		await config.update('globalFiltersEnabled', enabledMap, vscode.ConfigurationTarget.Global);
+		return true;
+	} catch (error) {
+		console.error('Error saving global filters to settings:', error);
+		return false;
+	}
+}
+
+// Helper function to migrate filters from globalState to VS Code settings (one-time migration)
+async function migrateGlobalFiltersFromState(context: vscode.ExtensionContext): Promise<void> {
+	try {
+		// Check if there are filters in globalState
+		const filtersInState: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+		if (filtersInState.length === 0) {
+			// No filters to migrate
+			return;
 		}
-	} else {
-		existingFilters.push(newFilter);
+
+		// Check if settings already have filters
+		const existingFilters = loadGlobalFilters();
+		if (existingFilters.length > 0) {
+			// Settings already have filters, skip migration
+			console.log('Global filters already exist in settings, skipping migration.');
+			return;
+		}
+
+		// Migrate filters to settings, ensuring enabled is set to true by default
+		const filtersToMigrate = filtersInState.map(f => ({ 
+			...f, 
+			enabled: f.enabled !== undefined ? f.enabled : true 
+		}));
+		if (await saveGlobalFilters(filtersToMigrate)) {
+			console.log(`Migrated ${filtersToMigrate.length} global filter(s) from globalState to VS Code settings.`);
+			// Optionally clear globalState after successful migration
+			// await context.globalState.update(FILTERS_STORAGE_KEY, undefined);
+		}
+	} catch (error) {
+		console.error('Error migrating global filters:', error);
+	}
+}
+
+// Helper function to load project-scoped filters
+function loadProjectFilters(): SearchFilter[] {
+	const filtersPath = getProjectFiltersPath();
+	if (!filtersPath) {
+		return [];
 	}
 
 	try {
-		await context.globalState.update(FILTERS_STORAGE_KEY, existingFilters);
-		vscode.window.showInformationMessage(`Filter '${newFilter.name}' saved successfully!`);
-		return true; // Indicate saved
+		if (fs.existsSync(filtersPath)) {
+			const fileContent = fs.readFileSync(filtersPath, 'utf8');
+			const filters: SearchFilter[] = JSON.parse(fileContent);
+			// Ensure all project filters have scope set
+			return filters.map(f => ({ ...f, scope: 'workspace' }));
+		}
+	} catch (error) {
+		console.error('Error loading project filters:', error);
+	}
+	return [];
+}
+
+// Helper function to save project-scoped filters
+function saveProjectFilters(filters: SearchFilter[]): boolean {
+	const filtersPath = getProjectFiltersPath();
+	if (!filtersPath) {
+		return false;
+	}
+
+	try {
+		const filtersDir = path.dirname(filtersPath);
+		// Create .vscode directory if it doesn't exist
+		if (!fs.existsSync(filtersDir)) {
+			fs.mkdirSync(filtersDir, { recursive: true });
+		}
+		// Only save workspace-scoped filters
+		const workspaceFilters = filters.filter(f => f.scope === 'workspace');
+		fs.writeFileSync(filtersPath, JSON.stringify(workspaceFilters, null, 2), 'utf8');
+		return true;
+	} catch (error) {
+		console.error('Error saving project filters:', error);
+		return false;
+	}
+}
+
+// Helper function to load all filters (global + project)
+function loadAllFilters(context: vscode.ExtensionContext): SearchFilter[] {
+	// Load from VS Code settings (with fallback to globalState for migration)
+	const globalFiltersFromSettings = loadGlobalFilters();
+	const globalFiltersFromState: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+	
+	// Use settings if it has filters, otherwise fall back to globalState
+	const globalFilters = globalFiltersFromSettings.length > 0 
+		? globalFiltersFromSettings 
+		: globalFiltersFromState.map(f => ({ ...f, scope: f.scope || 'global' }));
+	
+	const projectFilters = loadProjectFilters();
+	return [...globalFilters, ...projectFilters];
+}
+
+// Helper function to format filter label with scope indicator
+function formatFilterLabel(filter: SearchFilter): string {
+	const scopeIcon = filter.scope === 'workspace' ? '$(folder)' : '$(globe)';
+	const scopeText = filter.scope === 'workspace' ? 'Project' : 'Global';
+	return `${scopeIcon} ${filter.name} (${scopeText})`;
+}
+
+// Helper function to delete a filter
+async function deleteFilter(context: vscode.ExtensionContext, filterToDelete: SearchFilter): Promise<boolean> {
+	try {
+		const filterScope = filterToDelete.scope || 'global';
+		
+		if (filterScope === 'workspace') {
+			// Delete from project file
+			const projectFilters = loadProjectFilters();
+			const updatedFilters = projectFilters.filter(f => !(f.name === filterToDelete.name && f.scope === 'workspace'));
+			if (saveProjectFilters(updatedFilters)) {
+				vscode.window.showInformationMessage(`Search filter '${filterToDelete.name}' deleted from project successfully!`);
+				return true;
+			} else {
+				vscode.window.showErrorMessage('Failed to delete filter from project. See console for details.');
+				return false;
+			}
+		} else {
+			// Delete from global settings
+			let globalFilters: SearchFilter[] = loadGlobalFilters();
+			const updatedFilters = globalFilters.filter(f => f.name !== filterToDelete.name);
+			// saveGlobalFilters will automatically clean up the enabled map for deleted filters
+			if (await saveGlobalFilters(updatedFilters)) {
+				vscode.window.showInformationMessage(`Search filter '${filterToDelete.name}' deleted from global successfully!`);
+				return true;
+			} else {
+				vscode.window.showErrorMessage('Failed to delete filter from global settings. See console for details.');
+				return false;
+			}
+		}
+	} catch (error) {
+		console.error('Error deleting search filter:', error);
+		vscode.window.showErrorMessage('Failed to delete search filter. See console for details.');
+		return false;
+	}
+}
+
+// Helper function to ask user about filter scope
+async function askFilterScope(): Promise<'global' | 'workspace' | undefined> {
+	const scope = await vscode.window.showQuickPick<{ label: string; description: string; value: 'global' | 'workspace' }>(
+		[
+			{ label: '$(globe) Global', description: 'Available across all projects', value: 'global' },
+			{ label: '$(folder) Current Project', description: 'Only for this workspace', value: 'workspace' }
+		],
+		{
+			placeHolder: 'Where should this filter be saved?'
+		}
+	);
+	return scope?.value;
+}
+
+// Helper function to save filters and handle overwrites
+async function saveFilter(context: vscode.ExtensionContext, newFilter: SearchFilter, scope?: 'global' | 'workspace'): Promise<boolean> {
+	// Determine scope: use provided scope, or filter's scope, or ask user
+	let filterScope: 'global' | 'workspace' = scope || newFilter.scope || 'global';
+	
+	// If scope is not set and we're creating a new filter, ask the user
+	if (!newFilter.scope && !scope) {
+		const selectedScope = await askFilterScope();
+		if (!selectedScope) {
+			vscode.window.showInformationMessage('Filter not saved.');
+			return false;
+		}
+		filterScope = selectedScope;
+	}
+	
+	newFilter.scope = filterScope;
+
+	// Check for conflicts in the appropriate storage
+	const allFilters = loadAllFilters(context);
+	const existingFilter = allFilters.find(f => f.name === newFilter.name && f.scope === filterScope);
+
+	if (existingFilter) {
+		const overwrite = await vscode.window.showQuickPick(['Yes', 'No'], {
+			placeHolder: `Filter '${newFilter.name}' already exists in ${filterScope === 'global' ? 'global' : 'project'} scope. Overwrite?`
+		});
+		if (overwrite !== 'Yes') {
+			vscode.window.showInformationMessage('Filter not saved.');
+			return false;
+		}
+	}
+
+	try {
+		if (filterScope === 'workspace') {
+			// Save to project file
+			const projectFilters = loadProjectFilters();
+			const existingIndex = projectFilters.findIndex(f => f.name === newFilter.name);
+			if (existingIndex > -1) {
+				projectFilters[existingIndex] = newFilter;
+			} else {
+				projectFilters.push(newFilter);
+			}
+			if (saveProjectFilters(projectFilters)) {
+				vscode.window.showInformationMessage(`Filter '${newFilter.name}' saved to project successfully!`);
+				return true;
+			} else {
+				vscode.window.showErrorMessage('Failed to save filter to project. See console for details.');
+				return false;
+			}
+		} else {
+			// Save to global settings
+			let globalFilters: SearchFilter[] = loadGlobalFilters();
+			const existingIndex = globalFilters.findIndex(f => f.name === newFilter.name);
+			if (existingIndex > -1) {
+				// Preserve enabled state if updating existing filter and not explicitly set
+				if (newFilter.enabled === undefined) {
+					newFilter.enabled = globalFilters[existingIndex].enabled !== undefined 
+						? globalFilters[existingIndex].enabled 
+						: true;
+				}
+				globalFilters[existingIndex] = newFilter;
+			} else {
+				// For new filters, default enabled to true if not specified
+				if (newFilter.enabled === undefined) {
+					newFilter.enabled = true;
+				}
+				globalFilters.push(newFilter);
+			}
+			if (await saveGlobalFilters(globalFilters)) {
+				vscode.window.showInformationMessage(`Filter '${newFilter.name}' saved globally successfully!`);
+				return true;
+			} else {
+				vscode.window.showErrorMessage('Failed to save filter to global settings. See console for details.');
+				return false;
+			}
+		}
 	} catch (error) {
 		console.error('Error saving search filter:', error);
 		vscode.window.showErrorMessage('Failed to save search filter. See console for details.');
-		return false; // Indicate error
+		return false;
 	}
 }
 
@@ -103,12 +379,12 @@ async function addFolderToFilter(targetUriOrUris: vscode.Uri | vscode.Uri[] | un
     const patternsToAddString = folderPatterns.join(', '); // For display purposes
 
 	// --- Filter Selection (remains similar) ---
-	const savedFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+	const savedFilters: SearchFilter[] = loadAllFilters(context);
 	const createNewOption = { label: "$(add) Create New Filter...", description: `Create a new filter with ${folderPatterns.length} folder(s)`, name: null };
 	const quickPickItems = [
         createNewOption,
 		...savedFilters.map(filter => ({ 
-			label: filter.name, 
+			label: formatFilterLabel(filter), 
 			description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`, // Fixed typo
 			filter: filter // Store the actual filter object
 		}))
@@ -145,7 +421,7 @@ async function addFolderToFilter(targetUriOrUris: vscode.Uri | vscode.Uri[] | un
              });
 			newFilter.include = includePattern || '';
 		}
-		await saveFilter(context, newFilter);
+		await saveFilter(context, newFilter, undefined);
 
 	} else if ('filter' in selectedItem && selectedItem.filter) {
 		// Add to existing filter
@@ -191,7 +467,8 @@ async function addFolderToFilter(targetUriOrUris: vscode.Uri | vscode.Uri[] | un
 		} else {
             filterToUpdate.exclude = (addMethod.action === 'append') ? combinedPatternAppend : combinedPatternOverwrite;
 		}
-		await saveFilter(context, filterToUpdate);
+		// Preserve the existing scope when updating
+		await saveFilter(context, filterToUpdate, filterToUpdate.scope);
 	}
 }
 
@@ -231,12 +508,12 @@ async function addFileTypeToFilter(targetUriOrUris: vscode.Uri | vscode.Uri[] | 
     const patternsToAddString = fileTypePatterns.join(', '); // For display
 
 	// --- Filter Selection (remains similar) ---
-	const savedFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+	const savedFilters: SearchFilter[] = loadAllFilters(context);
     const createNewOption = { label: "$(add) Create New Filter...", description: `Create a new filter with ${fileTypePatterns.length} file type(s)`, name: null };
 	const quickPickItems = [
         createNewOption,
 		...savedFilters.map(filter => ({ 
-			label: filter.name, 
+			label: formatFilterLabel(filter), 
 			description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`, // Fixed typo
 			filter: filter // Store the actual filter object
 		}))
@@ -273,7 +550,7 @@ async function addFileTypeToFilter(targetUriOrUris: vscode.Uri | vscode.Uri[] | 
              });
 			newFilter.include = includePattern || '';
 		}
-		await saveFilter(context, newFilter);
+		await saveFilter(context, newFilter, undefined);
 
 	} else if ('filter' in selectedItem && selectedItem.filter) {
         // Add to existing filter
@@ -317,7 +594,8 @@ async function addFileTypeToFilter(targetUriOrUris: vscode.Uri | vscode.Uri[] | 
 		} else {
             filterToUpdate.exclude = (addMethod.action === 'append') ? combinedPatternAppend : combinedPatternOverwrite;
 		}
-		await saveFilter(context, filterToUpdate);
+		// Preserve the existing scope when updating
+		await saveFilter(context, filterToUpdate, filterToUpdate.scope);
 	}
 }
 
@@ -328,6 +606,11 @@ export function activate(context: vscode.ExtensionContext) {
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "custom-search-filters" is now active!');
+
+	// Migrate global filters from globalState to VS Code settings (one-time migration)
+	migrateGlobalFiltersFromState(context).catch(error => {
+		console.error('Error during migration:', error);
+	});
 
 	// Command to add a new custom search filter
 	const addFilterDisposable = vscode.commands.registerCommand('custom-search-filters.addFilter', async () => {
@@ -371,39 +654,87 @@ export function activate(context: vscode.ExtensionContext) {
 	// Command to select a filter and trigger search
 	const selectAndSearchDisposable = vscode.commands.registerCommand('custom-search-filters.selectAndSearch', async () => {
 		// 1. Retrieve saved filters
-		const savedFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+		let savedFilters: SearchFilter[] = loadAllFilters(context);
+
+		// Filter out disabled global filters (workspace filters are always shown)
+		savedFilters = savedFilters.filter(filter => {
+			if (filter.scope === 'workspace') {
+				return true; // Always show workspace filters
+			}
+			// For global filters, only show if enabled (default to true if not specified)
+			return filter.enabled !== false;
+		});
 
 		if (savedFilters.length === 0) {
-			vscode.window.showInformationMessage('No custom search filters saved yet. Use the "Add Custom Search Filter" command to create one.');
+			vscode.window.showInformationMessage('No enabled custom search filters available. Use the "Add Custom Search Filter" command to create one, or enable filters in settings.');
 			return;
 		}
 
-		// 2. Prepare Quick Pick items
-		const quickPickItems = savedFilters.map(filter => ({ 
-			label: filter.name, 
-			description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`, // Show patterns in description
-			filter: filter // Store the actual filter object
-		}));
+		// Create QuickPick instance to handle button clicks
+		const quickPick = vscode.window.createQuickPick();
+		quickPick.placeholder = 'Select a custom search filter to apply';
 
-		// 3. Show Quick Pick to select a filter
-		const selectedItem = await vscode.window.showQuickPick(quickPickItems, { 
-			placeHolder: 'Select a custom search filter to apply' 
+		// Function to update QuickPick items
+		const updateQuickPickItems = () => {
+			let allFilters = loadAllFilters(context);
+			// Filter out disabled global filters
+			allFilters = allFilters.filter(filter => {
+				if (filter.scope === 'workspace') {
+					return true; // Always show workspace filters
+				}
+				return filter.enabled !== false;
+			});
+			savedFilters = allFilters;
+			quickPick.items = savedFilters.map(filter => ({
+				label: formatFilterLabel(filter),
+				description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`,
+				filter: filter,
+				buttons: [{
+					iconPath: new vscode.ThemeIcon('x'),
+					tooltip: 'Delete filter'
+				}]
+			}));
+		};
+
+		updateQuickPickItems();
+
+		// Handle button clicks (delete)
+		quickPick.onDidTriggerItemButton(async (e) => {
+			const filterToDelete = (e.item as any).filter;
+			if (filterToDelete) {
+				const confirmed = await vscode.window.showWarningMessage(
+					`Are you sure you want to delete filter '${filterToDelete.name}'?`,
+					{ modal: true },
+					'Delete',
+					'Cancel'
+				);
+				if (confirmed === 'Delete') {
+					await deleteFilter(context, filterToDelete);
+					updateQuickPickItems(); // Refresh the list
+				}
+			}
 		});
 
-		if (!selectedItem) { return; } // User cancelled
-
-		// 4. Execute the built-in search command with the selected filter's parameters
-		const selectedFilter = selectedItem.filter;
-		vscode.commands.executeCommand('workbench.action.findInFiles', {
-			// query: '', // Start with an empty query, user will type it
-			filesToInclude: selectedFilter.include,
-			filesToExclude: selectedFilter.exclude,
-			triggerSearch: true, // Optional: Immediately trigger search? Might be better false.
-            isCaseSensitive: false, // Default search settings
-            matchWholeWord: false, // Default search settings
-            isRegex: false, // Default search settings
-			showIncludesExcludes: true // Ensure the include/exclude boxes are visible
+		// Handle item selection (search)
+		quickPick.onDidAccept(async () => {
+			const selectedItem = quickPick.selectedItems[0];
+			if (selectedItem && (selectedItem as any).filter) {
+				const selectedFilter = (selectedItem as any).filter;
+				quickPick.dispose();
+				vscode.commands.executeCommand('workbench.action.findInFiles', {
+					filesToInclude: selectedFilter.include,
+					filesToExclude: selectedFilter.exclude,
+					triggerSearch: true,
+					isCaseSensitive: false,
+					matchWholeWord: false,
+					isRegex: false,
+					showIncludesExcludes: true
+				});
+			}
 		});
+
+		quickPick.onDidHide(() => quickPick.dispose());
+		quickPick.show();
 	});
 
 	context.subscriptions.push(selectAndSearchDisposable);
@@ -411,7 +742,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Command to delete a custom search filter
 	const deleteFilterDisposable = vscode.commands.registerCommand('custom-search-filters.deleteFilter', async () => {
 		// 1. Retrieve saved filters
-		let savedFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+		let savedFilters: SearchFilter[] = loadAllFilters(context);
 
 		if (savedFilters.length === 0) {
 			vscode.window.showInformationMessage('No custom search filters to delete.');
@@ -420,7 +751,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// 2. Prepare Quick Pick items
 		const quickPickItems = savedFilters.map(filter => ({ 
-			label: filter.name, 
+			label: formatFilterLabel(filter), 
 			description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`, 
 			filter: filter // Store the actual filter object
 		}));
@@ -433,83 +764,10 @@ export function activate(context: vscode.ExtensionContext) {
 		if (!selectedItem) { return; } // User cancelled
 
 		// 4. Find and remove the selected filter
-		try {
-			const filterToDelete = selectedItem.filter;
-			const updatedFilters = savedFilters.filter(f => f.name !== filterToDelete.name);
-			
-			// 5. Update storage
-			await context.globalState.update(FILTERS_STORAGE_KEY, updatedFilters);
-			vscode.window.showInformationMessage(`Search filter '${filterToDelete.name}' deleted successfully!`);
-
-		} catch (error) {
-			console.error('Error deleting search filter:', error);
-			vscode.window.showErrorMessage('Failed to delete search filter. See console for details.');
-		}
+		await deleteFilter(context, selectedItem.filter);
 	});
 
 	context.subscriptions.push(deleteFilterDisposable); // Register the new command
-
-	// Command to combine existing filters
-	const combineFiltersDisposable = vscode.commands.registerCommand('custom-search-filters.combineFilters', async () => {
-		// 1. Retrieve saved filters
-		let savedFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
-
-		if (savedFilters.length < 2) {
-			vscode.window.showInformationMessage('You need at least two existing filters to combine.');
-			return;
-		}
-
-		// 2. Prepare Quick Pick items for multi-selection
-		const quickPickItems = savedFilters.map(filter => ({ 
-			label: filter.name, 
-			description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`, 
-			filter: filter // Store the actual filter object
-		}));
-
-		// 3. Show Quick Pick to select multiple filters to combine
-		const selectedItems = await vscode.window.showQuickPick(quickPickItems, { 
-			placeHolder: 'Select filters to combine (use Spacebar to select)',
-			canPickMany: true // Enable multi-select
-		});
-
-		if (!selectedItems || selectedItems.length < 2) { 
-			vscode.window.showInformationMessage('Combine operation cancelled. You must select at least two filters.');
-			return; 
-		}
-
-		// 4. Prompt for the new combined filter name
-		const combinedFilterName = await vscode.window.showInputBox({ 
-			prompt: 'Enter a name for the combined filter',
-			placeHolder: 'e.g., Combined Frontend Filters',
-			validateInput: text => {
-				return text && text.trim().length > 0 ? null : 'Filter name cannot be empty.';
-			}
-		});
-		if (!combinedFilterName) { return; } // User cancelled
-
-		// 5. Combine include and exclude patterns
-		const combinedInclude = selectedItems
-			.map(item => item.filter.include)
-			.filter(pattern => pattern && pattern.trim() !== '') // Filter out empty includes
-			.join(','); // Join with comma
-			
-		const combinedExclude = selectedItems
-			.map(item => item.filter.exclude)
-			.filter(pattern => pattern && pattern.trim() !== '') // Filter out empty excludes
-			.join(','); // Join with comma
-
-		// 6. Create the new filter object
-		const newFilter: SearchFilter = {
-			name: combinedFilterName.trim(),
-			include: combinedInclude,
-			exclude: combinedExclude
-		};
-
-		// 7. Save the new filter (handle potential name conflicts)
-		await saveFilter(context, newFilter); // Use helper
-	});
-
-	context.subscriptions.push(combineFiltersDisposable); // Register the combine command
 
 	// --- NEW Context Menu Commands ---
 	const addFolderToIncludeDisposable = vscode.commands.registerCommand(
@@ -543,7 +801,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// --- NEW: Command to Edit an Existing Filter ---
 	const editFilterDisposable = vscode.commands.registerCommand('custom-search-filters.editFilter', async () => {
 		// 1. Retrieve saved filters
-		let savedFilters: SearchFilter[] = context.globalState.get<SearchFilter[]>(FILTERS_STORAGE_KEY) || [];
+		let savedFilters: SearchFilter[] = loadAllFilters(context);
 
 		if (savedFilters.length === 0) {
 			vscode.window.showInformationMessage('No custom search filters saved yet to edit.');
@@ -552,7 +810,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// 2. Prepare Quick Pick items for selection
 		const quickPickItems = savedFilters.map(filter => ({ 
-			label: filter.name, 
+			label: formatFilterLabel(filter), 
 			description: `Include: ${filter.include || '(none)'}, Exclude: ${filter.exclude || '(none)'}`, 
 			filter: filter // Store the actual filter object
 		}));
@@ -610,45 +868,59 @@ export function activate(context: vscode.ExtensionContext) {
 		console.log('[EditFilter Debug] Final exclude pattern:', finalExcludePattern); // <-- ADDED LOG
 
         // --- Create updated filter, check name conflicts, save (logic remains the same) ---
+        const filterScope = originalFilter.scope || 'global';
         const updatedFilter: SearchFilter = {
 			name: newFilterName.trim(), // Trim the validated name
 			include: finalIncludePattern,
-			exclude: finalExcludePattern
+			exclude: finalExcludePattern,
+			scope: filterScope, // Preserve the original scope
+			enabled: originalFilter.enabled // Preserve enabled state (for global filters)
 		};
-        console.log('[EditFilter Debug] Constructed updated filter:', updatedFilter); // <-- ADDED LOG
 
 		// 8. Handle potential name conflicts if the name was changed
         if (originalName !== updatedFilter.name) {
-            console.log('[EditFilter Debug] Name changed. Checking conflict for:', updatedFilter.name); // <-- ADDED LOG
-            const conflictingFilterExists = savedFilters.some(f => f.name === updatedFilter.name);
+            const conflictingFilterExists = savedFilters.some(f => f.name === updatedFilter.name && f.scope === filterScope);
             if (conflictingFilterExists) {
-                console.error('[EditFilter Debug] Name conflict detected.'); // <-- ADDED LOG
-                vscode.window.showErrorMessage(`A filter with the name '${updatedFilter.name}' already exists. Please choose a different name.`);
+                vscode.window.showErrorMessage(`A filter with the name '${updatedFilter.name}' already exists in ${filterScope === 'global' ? 'global' : 'project'} scope. Please choose a different name.`);
                 return; // Stop the edit process
             }
-        } else {
-             console.log('[EditFilter Debug] Name not changed, skipping conflict check.'); // <-- ADDED LOG
         }
 
-		// 9. Find the original filter in the array and update it
+		// 9. Save the updated filter to the appropriate location
 		try {
-            console.log('[EditFilter Debug] Attempting to find original filter with name:', originalName); // <-- ADDED LOG
-            const indexToUpdate = savedFilters.findIndex(f => f.name === originalName);
-            console.log('[EditFilter Debug] Found index:', indexToUpdate); // <-- ADDED LOG
-
-            if (indexToUpdate > -1) {
-                savedFilters[indexToUpdate] = updatedFilter; // Replace with the updated version
-                console.log('[EditFilter Debug] Attempting to update globalState...'); // <-- ADDED LOG
-                await context.globalState.update(FILTERS_STORAGE_KEY, savedFilters);
-                console.log('[EditFilter Debug] globalState update successful.'); // <-- ADDED LOG
-			    vscode.window.showInformationMessage(`Search filter '${updatedFilter.name}' updated successfully!`);
+            if (filterScope === 'workspace') {
+                // Update in project file
+                const projectFilters = loadProjectFilters();
+                const existingIndex = projectFilters.findIndex(f => f.name === originalName);
+                if (existingIndex > -1) {
+                    projectFilters[existingIndex] = updatedFilter;
+                } else {
+                    // If not found, add it (shouldn't happen, but handle gracefully)
+                    projectFilters.push(updatedFilter);
+                }
+                if (saveProjectFilters(projectFilters)) {
+                    vscode.window.showInformationMessage(`Search filter '${updatedFilter.name}' updated in project successfully!`);
+                } else {
+                    vscode.window.showErrorMessage('Failed to update filter in project. See console for details.');
+                }
             } else {
-                console.error('[EditFilter Debug] Original filter not found in savedFilters array.'); // <-- ADDED LOG
-                // Should theoretically not happen if selection worked
-                vscode.window.showErrorMessage(`Could not find the original filter '${originalName}' to update.`);
+                // Update in global settings
+                let globalFilters: SearchFilter[] = loadGlobalFilters();
+                const existingIndex = globalFilters.findIndex(f => f.name === originalName);
+                if (existingIndex > -1) {
+                    globalFilters[existingIndex] = updatedFilter;
+                } else {
+                    // If not found, add it (shouldn't happen, but handle gracefully)
+                    globalFilters.push(updatedFilter);
+                }
+                if (await saveGlobalFilters(globalFilters)) {
+                    vscode.window.showInformationMessage(`Search filter '${updatedFilter.name}' updated globally successfully!`);
+                } else {
+                    vscode.window.showErrorMessage('Failed to update filter in global settings. See console for details.');
+                }
             }
 		} catch (error) {
-			console.error('[EditFilter Debug] Error during update/save:', error); // <-- ADDED LOG
+			console.error('Error updating search filter:', error);
 			vscode.window.showErrorMessage('Failed to update search filter. See console for details.');
 		}
 	});
@@ -660,7 +932,6 @@ export function activate(context: vscode.ExtensionContext) {
         addFilterDisposable,
         selectAndSearchDisposable,
         deleteFilterDisposable,
-        combineFiltersDisposable,
         editFilterDisposable,
         addFolderToIncludeDisposable,
         addFolderToExcludeDisposable,
