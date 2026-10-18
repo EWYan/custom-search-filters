@@ -48,12 +48,14 @@ Filters can be saved with two different scopes:
 *   **Enable/Disable**: You can enable or disable global filters in VS Code settings. Disabled filters will not appear in the filter selection list
 *   **Default State**: All global filters are enabled by default
 
+During upgrades, existing global filter settings are preserved, including an explicitly empty list. Legacy filters are imported only when the user setting has not been configured.
+
 ### Workspace Filters
 *   **Scope**: Only available in the current workspace/project
 *   **Storage Location**: Stored in `.vscode/custom-search-filters.json` in the project root directory
 *   **Sync**: Included in the project repository (if committed), making them available to all team members
 *   **Visibility**: Always visible in the filter selection list (cannot be disabled)
 
-When creating a new filter, you'll be prompted to choose between Global or Workspace scope. The filter list displays both types with icons indicating their scope (🌐 for Global, 📁 for Workspace).
+When creating a new filter, you'll be prompted to choose between Global or Workspace scope. The filter list displays both types with VS Code icons: globe for Global and folder for Workspace.
 
 **Enjoy!**

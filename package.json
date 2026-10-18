@@ -1,13 +1,13 @@
 {
   "name": "custom-search-filters",
   "displayName": "custom-search-filters",
-  "description": "nice filter",
+  "description": "Manage reusable include and exclude filters for VS Code file search",
   "publisher": "juzidaxia",
   "repository": {
     "type": "git",
     "url": "https://github.com/EWYan/custom-search-filters.git"
   },
-  "version": "0.1.4",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.96.2"
   },
@@ -69,6 +69,12 @@
           "description": "Global search filters that are available across all projects. These filters can be synced via VS Code Settings Sync.",
           "items": {
             "type": "object",
+            "required": [
+              "name",
+              "include",
+              "exclude"
+            ],
+            "additionalProperties": false,
             "properties": {
               "name": {
                 "type": "string",
@@ -84,8 +90,11 @@
               },
               "scope": {
                 "type": "string",
-                "enum": ["global"],
-                "description": "Filter scope (should be 'global' for settings)"
+                "enum": [
+                  "global"
+                ],
+                "default": "global",
+                "description": "Filter scope for global settings"
               }
             }
           }
@@ -105,7 +114,7 @@
         {
           "command": "custom-search-filters.selectAndSearch",
           "group": "navigation",
-          "icon": "$(filter)" 
+          "icon": "$(filter)"
         }
       ],
       "explorer/context": [
@@ -121,12 +130,12 @@
         },
         {
           "command": "custom-search-filters.addFileTypeToInclude",
-          "when": "resourceExtname != ''",
+          "when": "resourceExtname != '' && !explorerResourceIsFolder",
           "group": "navigation@7"
         },
         {
           "command": "custom-search-filters.addFileTypeToExclude",
-          "when": "resourceExtname != ''",
+          "when": "resourceExtname != '' && !explorerResourceIsFolder",
           "group": "navigation@8"
         }
       ]

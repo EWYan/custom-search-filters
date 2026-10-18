@@ -32,3 +32,13 @@ All notable changes to the "custom-search-filters" extension will be documented 
 ## [0.1.3] - 2025-09-20
 ### Fixed
 - Fixed folder detection issue where folders with dots in their names (e.g., "my.folder") were incorrectly identified as files. Now uses `fs.statSync()` to properly check if a path is a directory instead of relying on `path.extname()`.
+
+## [Unreleased]
+
+### Fixed
+
+- Preserve existing global settings, including explicitly empty lists, when migrating legacy filters so deleted or renamed filters do not reappear.
+- Wait for migration before enabling commands so the first search can use migrated filters.
+- Recognize symbolic links to files and directories in Explorer filter commands.
+- Allow overwriting patterns with a subset of existing patterns even when appending would make no change.
+- Skip malformed filter entries and enabled states, and keep workspace filters available if global configuration cannot be read.
