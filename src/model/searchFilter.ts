@@ -23,7 +23,8 @@ export function normalizeFilter(value: unknown, scope: FilterScope): SearchFilte
 		? value as Record<string, unknown>
 		: {};
 	return {
-		name: typeof filter.name === 'string' ? filter.name.trim() : '',
+		// Stored names are identifiers, including whitespace used by older versions.
+		name: typeof filter.name === 'string' ? filter.name : '',
 		include: typeof filter.include === 'string' ? filter.include : '',
 		exclude: typeof filter.exclude === 'string' ? filter.exclude : '',
 		scope,

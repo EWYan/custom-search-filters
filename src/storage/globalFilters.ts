@@ -45,11 +45,9 @@ export async function saveGlobalFilters(filters: SearchFilter[]): Promise<void> 
 		return filterWithoutEnabled;
 	});
 
-	const enabledMap: Record<string, boolean> = {};
-	for (const filter of globalFilters) {
-		enabledMap[filter.name] = filter.enabled !== undefined ? filter.enabled : true;
-	}
+	const enabledMap = Object.fromEntries(globalFilters.map(filter => [filter.name, filter.enabled ?? true]));
 
-	await config.update(FILTERS_KEY, filtersToSave, vscode.ConfigurationTarget.Global);
+	// Keep migration retryable if either write fails: definitions mark the import as present.
 	await config.update(ENABLED_KEY, enabledMap, vscode.ConfigurationTarget.Global);
+	await config.update(FILTERS_KEY, filtersToSave, vscode.ConfigurationTarget.Global);
 }

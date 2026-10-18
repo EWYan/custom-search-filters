@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { recoverLegacyFilters } from './migration';
 import { FilterPatternTarget, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, appendToPattern } from './model/searchFilter';
 import { deleteFilter, loadAllFilters, saveFilter } from './storage/filterRepository';
 import { getWorkspaceFolderForUri } from './storage/workspaceFilters';
@@ -424,6 +425,14 @@ export function registerCommands(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('custom-search-filters.selectAndSearch', selectAndSearch),
 		vscode.commands.registerCommand('custom-search-filters.deleteFilter', deleteSelectedFilter),
 		vscode.commands.registerCommand('custom-search-filters.editFilter', editFilter),
+		vscode.commands.registerCommand('custom-search-filters.recoverLegacyFilters', async () => {
+			try {
+				await recoverLegacyFilters(context);
+			} catch (error) {
+				console.error('Error recovering legacy filters:', error);
+				await vscode.window.showErrorMessage(`Could not recover legacy filters: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}),
 		vscode.commands.registerCommand('custom-search-filters.addFolderToInclude', (uri, uris) => addFolders(uri, uris, 'include')),
 		vscode.commands.registerCommand('custom-search-filters.addFolderToExclude', (uri, uris) => addFolders(uri, uris, 'exclude')),
 		vscode.commands.registerCommand('custom-search-filters.addFileTypeToInclude', (uri, uris) => addFileTypes(uri, uris, 'include')),

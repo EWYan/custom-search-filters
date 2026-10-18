@@ -20,9 +20,9 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(compareVersions('1.0', '1.0.0'), 0);
 	});
 
-	test('normalizeFilter fills missing fields and trims names', () => {
+	test('normalizeFilter fills missing fields and preserves stored names', () => {
 		assert.deepStrictEqual(normalizeFilter({ name: '  api  ', include: 'src/**' }, 'global'), {
-			name: 'api',
+			name: '  api  ',
 			include: 'src/**',
 			exclude: '',
 			scope: 'global',

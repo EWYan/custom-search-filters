@@ -12,6 +12,7 @@ All commands can be accessed via the Command Palette (Ctrl+Shift+P or Cmd+Shift+
 *   **Custom Search: Select Filter and Search**:
     *   Shows a list of your saved filters.
     *   Selecting a filter opens the Search view with the corresponding include/exclude patterns pre-filled.
+    *   Also available from the filter icon in the Search view and editor title bars.
 *   **Custom Search: Delete Filter**:
     *   Shows a list of your saved filters.
     *   Select a filter to permanently remove it.
@@ -49,6 +50,12 @@ Filters can be saved with two different scopes:
 *   **Default State**: All global filters are enabled by default
 
 During upgrades, existing global filter settings are preserved, including an explicitly empty list. Legacy filters are imported only when the user setting has not been configured.
+
+### Upgrading from 0.2.2
+
+Version 1.0.1 keeps the existing user settings and workspace JSON format, including stored names and disabled states. No manual conversion is required.
+
+If filters were lost during an earlier migration, run **Custom Search: Recover Legacy Filters** from the Command Palette. After confirmation, it restores missing names from the legacy snapshot into user settings, preserving existing filters and enabled states. Recovery may bring back previously deleted filters, so use it only when needed. The snapshot is retained for retrying recovery; if none remains, the command reports that nothing can be recovered.
 
 ### Workspace Filters
 *   **Scope**: Only available in the current workspace/project

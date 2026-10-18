@@ -33,7 +33,16 @@ All notable changes to the "custom-search-filters" extension will be documented 
 ### Fixed
 - Fixed folder detection issue where folders with dots in their names (e.g., "my.folder") were incorrectly identified as files. Now uses `fs.statSync()` to properly check if a path is a directory instead of relying on `path.extname()`.
 
-## [Unreleased]
+## [1.0.1] - 2026-10-18
+
+### Added
+
+- Add a filter shortcut to the Search view title bar.
+- Add **Custom Search: Recover Legacy Filters** to explicitly recover missing legacy data after a failed migration in an older release, without replacing existing user filters or enabled states.
+
+### Changed
+
+- Separate commands, storage, filter models, and migration into dedicated modules.
 
 ### Fixed
 
@@ -42,3 +51,6 @@ All notable changes to the "custom-search-filters" extension will be documented 
 - Recognize symbolic links to files and directories in Explorer filter commands.
 - Allow overwriting patterns with a subset of existing patterns even when appending would make no change.
 - Skip malformed filter entries and enabled states, and keep workspace filters available if global configuration cannot be read.
+- Preserve stored filter names exactly, including whitespace, so upgrades do not reset disabled states or collapse distinct names.
+- Save enabled states before filter definitions so a failed migration can be retried without losing disabled states.
+- Preserve enabled states for filter names such as `__proto__`.

@@ -7,6 +7,7 @@ import { SearchFilter } from '../../model/searchFilter';
 
 interface FixtureOptions {
 	settings?: Record<string, unknown>;
+	workspaceSettings?: Record<string, unknown>;
 	legacy?: unknown;
 	workspaceFilters?: unknown[];
 	fileType?: vscode.FileType;
@@ -35,9 +36,9 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 		items: [] as PickerItem[],
 		dispose() {}, show() {}, onDidAccept() {}, onDidHide() {}, onDidTriggerItemButton() {}
 	};
-	const selection = { action: 'overwrite' };
+	const selection = { action: 'overwrite', warning: undefined as string | undefined };
 	const config = {
-		get: (key: string, fallback: unknown) => settings.has(key) ? settings.get(key) : fallback,
+		get: (key: string, fallback: unknown) => options.workspaceSettings?.[key] ?? (settings.has(key) ? settings.get(key) : fallback),
 		inspect: (key: string) => ({ key, globalValue: settings.get(key) }),
 		update: async (key: string, value: unknown) => {
 			await options.beforeUpdate?.(key, value);
@@ -65,6 +66,7 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 		window: {
 			showInformationMessage: async (message: string) => { messages.push(message); },
 			showErrorMessage: async (message: string) => { messages.push(message); },
+			showWarningMessage: async (message: string) => { messages.push(message); return selection.warning; },
 			showQuickPick: async (items: PickerItem[]) => {
 				choices.push(items);
 				return items.find(item => item.action === selection.action) || items.find(item => item.filter);

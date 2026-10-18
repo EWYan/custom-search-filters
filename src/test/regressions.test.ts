@@ -62,6 +62,127 @@ suite('Filter migration regressions', () => {
 		await migration.migrateGlobalFiltersFromState(fixture.context);
 		assert.deepStrictEqual(fixture.settings.get('globalFilters'), legacy);
 	});
+
+	test('retries migration with disabled states intact when the second settings write fails', async () => {
+		let fail = true;
+		const legacy = [{ ...filter(' disabled '), enabled: false }];
+		const fixture = createExtensionFixture({ legacy, beforeUpdate: async key => {
+			if (fail && key === 'globalFilters') {
+				throw new Error('Definitions write failed');
+			}
+		} });
+		const migration = fixture.load<typeof import('../migration')>('migration');
+		await assert.rejects(migration.migrateGlobalFiltersFromState(fixture.context), /Definitions write failed/);
+		assert.strictEqual(fixture.settings.get('globalFilters'), undefined);
+		assert.strictEqual(fixture.state.get('migrationVersion'), undefined);
+		assert.deepStrictEqual(fixture.state.get('customSearchFilters'), legacy);
+		fail = false;
+		await migration.migrateGlobalFiltersFromState(fixture.context);
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), [filter(' disabled ')]);
+		assert.deepStrictEqual(fixture.settings.get('globalFiltersEnabled'), { ' disabled ': false });
+		assert.strictEqual(fixture.state.get('customSearchFilters'), undefined);
+	});
+});
+
+suite('Legacy recovery regressions', () => {
+	test('recovers a snapshot left behind by a completed 0.2.2 migration only on request', async () => {
+		const legacy = [{ ...filter(' old '), enabled: false }];
+		const fixture = createExtensionFixture({ legacy });
+		fixture.state.set('migrationVersion', '0.1.4');
+		await fixture.load<typeof import('../extension')>('extension').activate(fixture.context);
+		assert.deepStrictEqual(fixture.updates, []);
+		fixture.selection.warning = 'Recover';
+		await fixture.runCommand('recoverLegacyFilters');
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), [filter(' old ')]);
+		assert.deepStrictEqual(fixture.settings.get('globalFiltersEnabled'), { ' old ': false });
+		assert.deepStrictEqual(fixture.state.get('customSearchFilters'), legacy);
+	});
+
+	test('leaves an explicitly empty list untouched when recovery is cancelled', async () => {
+		const fixture = createExtensionFixture({ settings: { globalFilters: [] }, legacy: [filter('deleted')] });
+		await fixture.load<typeof import('../migration')>('migration').recoverLegacyFilters(fixture.context);
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), []);
+		assert.deepStrictEqual(fixture.updates, []);
+	});
+
+	test('merges missing names without replacing user values or importing workspace overrides', async () => {
+		const current = [filter('existing', 'current/**/*'), null];
+		const fixture = createExtensionFixture({
+			settings: { globalFilters: current, globalFiltersEnabled: { existing: false, recovered: false } },
+			workspaceSettings: { globalFilters: [filter('workspace-override')], globalFiltersEnabled: { recovered: true } },
+			legacy: [filter('existing', 'old/**/*'), filter('recovered'), filter('recovered', 'duplicate/**/*')]
+		});
+		fixture.selection.warning = 'Recover';
+		const migration = fixture.load<typeof import('../migration')>('migration');
+		await migration.recoverLegacyFilters(fixture.context);
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), [...current, filter('recovered')]);
+		assert.deepStrictEqual(fixture.settings.get('globalFiltersEnabled'), { existing: false, recovered: false });
+		fixture.updates.length = 0;
+		await migration.recoverLegacyFilters(fixture.context);
+		assert.deepStrictEqual(fixture.updates, [], 'A second recovery must not duplicate filters or reset enabled states');
+	});
+
+	test('recovers into an intentionally empty list only after confirmation', async () => {
+		const fixture = createExtensionFixture({ settings: { globalFilters: [] }, legacy: [filter('deleted')] });
+		fixture.selection.warning = 'Recover';
+		await fixture.load<typeof import('../migration')>('migration').recoverLegacyFilters(fixture.context);
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), [filter('deleted')]);
+	});
+
+	test('keeps invalid user settings intact and reports the recovery error', async () => {
+		const fixture = createExtensionFixture({ settings: { globalFilters: null }, legacy: [filter('legacy')] });
+		fixture.selection.warning = 'Recover';
+		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+		await fixture.runCommand('recoverLegacyFilters');
+		assert.strictEqual(fixture.settings.get('globalFilters'), null);
+		assert.deepStrictEqual(fixture.updates, []);
+		assert.match(fixture.messages.at(-1)!, /Could not recover legacy filters/);
+	});
+
+	test('retries recovery after a partial write without losing disabled states', async () => {
+		let fail = true;
+		const fixture = createExtensionFixture({
+			settings: { globalFilters: [] }, legacy: [{ ...filter('disabled'), enabled: false }],
+			beforeUpdate: async key => {
+				if (fail && key === 'globalFilters') {
+					throw new Error('Definitions write failed');
+				}
+			}
+		});
+		fixture.selection.warning = 'Recover';
+		const migration = fixture.load<typeof import('../migration')>('migration');
+		await assert.rejects(migration.recoverLegacyFilters(fixture.context), /Definitions write failed/);
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), []);
+		fail = false;
+		await migration.recoverLegacyFilters(fixture.context);
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), [filter('disabled')]);
+		assert.deepStrictEqual(fixture.settings.get('globalFiltersEnabled'), { disabled: false });
+	});
+});
+
+suite('Stored name compatibility', () => {
+	test('preserves whitespace in global and workspace names and keeps disabled states', async () => {
+		const fixture = createExtensionFixture({
+			settings: { globalFilters: [filter('api'), filter(' api ')], globalFiltersEnabled: { ' api ': false } },
+			workspaceFilters: [filter(' project ')]
+		});
+		const repository = fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository');
+		const filters = await repository.loadAllFilters();
+		assert.deepStrictEqual(filters.map(item => item.name), ['api', ' api ', ' project ']);
+		assert.strictEqual(filters[1].enabled, false);
+		await repository.deleteFilter(filters[0]);
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), [filter(' api ')]);
+		assert.deepStrictEqual(fixture.settings.get('globalFiltersEnabled'), { ' api ': false });
+	});
+
+	test('preserves disabled states for names matching object properties', async () => {
+		const fixture = createExtensionFixture({ settings: {
+			globalFilters: [filter('__proto__')], globalFiltersEnabled: JSON.parse('{"__proto__": false}')
+		} });
+		const storage = fixture.load<typeof import('../storage/globalFilters')>('storage/globalFilters');
+		await storage.saveGlobalFilters(storage.loadGlobalFilters());
+		assert.deepStrictEqual(fixture.settings.get('globalFiltersEnabled'), JSON.parse('{"__proto__": false}'));
+	});
 });
 
 suite('Activation regressions', () => {
