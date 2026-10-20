@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { FilterScope, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter } from '../model/searchFilter';
+import { FilterScope, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, filterKey } from '../model/searchFilter';
+import { notifyFilterChange } from './filterEvents';
 import { loadGlobalFilters, saveGlobalFilters } from './globalFilters';
 import { getWorkspaceFolderForUri, loadAllWorkspaceFilters, loadWorkspaceFilters, saveWorkspaceFilters } from './workspaceFilters';
 
@@ -47,6 +48,10 @@ export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: v
 			filters.push({ ...filter, scope: 'workspace', workspaceFolder });
 		}
 		await saveWorkspaceFilters(workspaceFolder, filters);
+		notifyFilterChange({
+			previousKey: filterKey({ ...filter, name: nameToReplace, scope: 'workspace', workspaceFolder }),
+			filter: { ...filter, scope: 'workspace', workspaceFolder }
+		});
 		return;
 	}
 
@@ -62,6 +67,7 @@ export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: v
 		filters.push({ ...filter, scope: 'global', enabled: filter.enabled !== undefined ? filter.enabled : true });
 	}
 	await saveGlobalFilters(filters);
+	notifyFilterChange({ previousKey: filterKey({ ...filter, name: nameToReplace, scope: 'global' }), filter });
 }
 
 export async function deleteFilter(filter: StoredSearchFilter): Promise<void> {
@@ -72,8 +78,10 @@ export async function deleteFilter(filter: StoredSearchFilter): Promise<void> {
 			workspaceFilter.workspaceFolder,
 			filters.filter(existing => existing.name !== filter.name)
 		);
+		notifyFilterChange({ previousKey: filterKey(filter) });
 		return;
 	}
 
 	await saveGlobalFilters(loadGlobalFilters().filter(existing => existing.name !== filter.name));
+	notifyFilterChange({ previousKey: filterKey(filter) });
 }

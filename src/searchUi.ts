@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { FilterScope, SearchFilter, StoredSearchFilter, scopeLabel } from './model/searchFilter';
+import { patternsForSearch } from './model/searchPatterns';
 
 export interface FilterQuickPickItem extends vscode.QuickPickItem {
 	filter: StoredSearchFilter;
@@ -23,14 +24,12 @@ export function toFilterQuickPickItems(filters: StoredSearchFilter[]): FilterQui
 	}));
 }
 
-export function runSearch(filter: SearchFilter): void {
-	vscode.commands.executeCommand('workbench.action.findInFiles', {
-		filesToInclude: filter.include,
-		filesToExclude: filter.exclude,
+export async function runSearch(filter: StoredSearchFilter): Promise<void> {
+	const resolved = patternsForSearch(filter);
+	await vscode.commands.executeCommand('workbench.action.findInFiles', {
+		filesToInclude: resolved.include,
+		filesToExclude: resolved.exclude,
 		triggerSearch: true,
-		isCaseSensitive: false,
-		matchWholeWord: false,
-		isRegex: false,
 		showIncludesExcludes: true
 	});
 }

@@ -14,6 +14,14 @@ function editorFixture(options: Parameters<typeof createExtensionFixture>[0]) {
 }
 
 suite('Filter editor', () => {
+	test('keeps brace expressions intact when removing patterns with the checklist', async () => {
+		const fixture = editorFixture({ settings: { globalFilters: [filter('target', '**/*.{ts,js},**/*.md')] } });
+		fixture.picks.push('target', 'include', 'keep', ['**/*.{ts,js}'], 'save');
+		await fixture.runCommand('editFilter');
+		assert.deepStrictEqual(fixture.choices[3].map(item => item.label), ['**/*.{ts,js}', '**/*.md']);
+		assert.strictEqual((fixture.settings.get('globalFilters') as SearchFilter[])[0].include, '**/*.{ts,js}');
+	});
+
 	test('changes a single field without prompting for the others', async () => {
 		const fixture = editorFixture({ settings: { globalFilters: [filter('target')] } });
 		fixture.picks.push('target', 'exclude', 'save');

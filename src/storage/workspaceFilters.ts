@@ -1,11 +1,10 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { SearchFilter, WorkspaceSearchFilter, normalizeFilter } from '../model/searchFilter';
 
 const PROJECT_FILTERS_FILE = '.vscode/custom-search-filters.json';
 
 function filtersUri(workspaceFolder: vscode.WorkspaceFolder): vscode.Uri {
-	return vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, PROJECT_FILTERS_FILE));
+	return vscode.Uri.joinPath(workspaceFolder.uri, PROJECT_FILTERS_FILE);
 }
 
 export function getWorkspaceFolderForUri(uri?: vscode.Uri): vscode.WorkspaceFolder | undefined {
@@ -56,7 +55,7 @@ export async function loadAllWorkspaceFilters(): Promise<WorkspaceSearchFilter[]
 
 export async function saveWorkspaceFilters(workspaceFolder: vscode.WorkspaceFolder, filters: SearchFilter[]): Promise<void> {
 	const uri = filtersUri(workspaceFolder);
-	const dirUri = vscode.Uri.file(path.dirname(uri.fsPath));
+	const dirUri = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode');
 	const workspaceFilters = filters
 		.map(filter => normalizeFilter(filter, 'workspace'))
 		.filter(filter => filter.name.length > 0);

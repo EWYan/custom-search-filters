@@ -59,6 +59,52 @@ suite('Filter name suggestions', () => {
 });
 
 suite('Explorer add to filter', () => {
+	for (const mutation of ['edit', 'delete'] as const) {
+		test(`does not undo a later ${mutation} from an old notification`, async () => {
+			const fixture = explorerFixture({ settings: { globalFilters: [filter('target')] } });
+			let click!: (action: string | undefined) => void;
+			fixture.selection.info = new Promise(resolve => { click = resolve; });
+			fixture.picks.push('target');
+			const operation = fixture.runCommand('addFolderToInclude', vscode.Uri.joinPath(fixture.folder.uri, 'test'));
+			try {
+				for (let i = 0; i < 50 && fixture.messages.length === 0; i++) { await new Promise(resolve => setImmediate(resolve)); }
+				assert.ok(fixture.messages.some(message => message.startsWith('Added')));
+				const repository = fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository');
+				const edited = filter('target', 'src/**/*,test/**/*', '**/*.secret');
+				if (mutation === 'edit') { await repository.saveFilter(edited); }
+				else { await repository.deleteFilter(filter('target')); }
+				fixture.selection.info = undefined;
+				click('Undo');
+				await operation;
+				assert.deepStrictEqual(fixture.settings.get('globalFilters'), mutation === 'edit' ? [edited] : []);
+				assert.match(fixture.messages.at(-1)!, /Cannot undo/);
+			} finally { click(undefined); await operation; fixture.dispose(); }
+		});
+	}
+
+	test('stores project folder patterns portably and resolves them for the current workspace', async () => {
+		const fixture = explorerFixture({ extraWorkspaceFolderNames: ['other'] });
+		fixture.picks.push('new', 'workspace');
+		fixture.inputs.push('project');
+		await fixture.runCommand('addFolderToInclude', vscode.Uri.joinPath(fixture.folder.uri, 'src'));
+		const saved = fixture.workspaceWrites[0] as SearchFilter[];
+		assert.strictEqual(saved[0].include, 'src/**/*');
+		const [project] = await fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository').loadAllFilters();
+		await fixture.load<typeof import('../searchUi')>('searchUi').runSearch(project);
+		assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/src/**/*');
+		const single = explorerFixture({ workspaceFilters: saved });
+		const [reopened] = await single.load<typeof import('../storage/filterRepository')>('storage/filterRepository').loadAllFilters();
+		await single.load<typeof import('../searchUi')>('searchUi').runSearch(reopened);
+		assert.strictEqual((single.executed[0].args[0] as { filesToInclude: string }).filesToInclude, 'src/**/*');
+	});
+
+	test('qualifies project patterns in a workspace file containing just one root', async () => {
+		const fixture = explorerFixture({ workspaceFilters: [filter('project')], workspaceFile: true });
+		const [project] = await fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository').loadAllFilters();
+		await fixture.load<typeof import('../searchUi')>('searchUi').runSearch(project);
+		assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/src/**/*');
+	});
+
 	test('shows the patterns being added in the picker title', async () => {
 		const fixture = explorerFixture({ settings: { globalFilters: [filter('target', '')] } });
 		fixture.picks.push(undefined);
@@ -160,7 +206,7 @@ suite('Explorer menu manifest', () => {
 		assert.deepStrictEqual(manifest.contributes.menus['explorer/context'].map((entry: { submenu: string }) => entry.submenu), [submenu]);
 		assert.deepStrictEqual(manifest.contributes.menus[submenu].map((entry: { command: string }) => entry.command), explorerCommands);
 		const hidden = manifest.contributes.menus.commandPalette
-			.filter((entry: { when: string }) => entry.when === 'false')
+			.filter((entry: { when: string; command: string }) => entry.when === 'false' && explorerCommands.includes(entry.command))
 			.map((entry: { command: string }) => entry.command);
 		assert.deepStrictEqual(hidden, explorerCommands);
 	});

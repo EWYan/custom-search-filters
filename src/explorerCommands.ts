@@ -2,8 +2,9 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { editFilterInteractively } from './filterEditor';
 import {
-	FilterPatternTarget, FilterScope, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, applyPatterns
+	FilterPatternTarget, FilterScope, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, applyPatterns, filterKey
 } from './model/searchFilter';
+import { usesWorkspaceNames } from './model/searchPatterns';
 import { describeFilter, formatFilterLabel, askFilterScope, runSearch } from './searchUi';
 import { hasNameConflict, loadAllFilters, saveFilter } from './storage/filterRepository';
 import { getWorkspaceFolderForUri } from './storage/workspaceFilters';
@@ -73,7 +74,7 @@ async function folderPatternsFromUris(uris: vscode.Uri[]): Promise<string[]> {
 
 			const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath).split(path.sep).join('/');
 			// Multi-root search scopes './<folder name>/...' to that root; plain paths match in every root.
-			patterns.add((vscode.workspace.workspaceFolders?.length ?? 0) > 1
+			patterns.add(usesWorkspaceNames()
 				? `./${path.posix.join(workspaceFolder.name, relativePath, '**', '*')}`
 				: path.posix.join(relativePath || '.', '**', '*'));
 		} catch (error) {
@@ -103,14 +104,25 @@ async function fileTypePatternsFromUris(uris: vscode.Uri[]): Promise<string[]> {
 	return [...patterns];
 }
 
-function targetItems(filters: StoredSearchFilter[], target: FilterPatternTarget, patterns: string[]): TargetItem[] {
+function patternsForScope(kind: PatternKind, patterns: string[], folder?: vscode.WorkspaceFolder): string[] | undefined {
+	if (kind !== 'folder' || !folder || !usesWorkspaceNames()) {
+		return patterns;
+	}
+	const prefix = `./${folder.name}/`;
+	return patterns.every(pattern => pattern.startsWith(prefix))
+		? patterns.map(pattern => pattern.slice(prefix.length)) : undefined;
+}
+
+function targetItems(filters: StoredSearchFilter[], kind: PatternKind, target: FilterPatternTarget, patterns: string[]): TargetItem[] {
 	const opposite = target === 'include' ? 'exclude' : 'include';
 	const items: TargetItem[] = [{ label: '$(add) New Filter...', description: 'Create a filter with these patterns', action: 'new' }];
 	if (filters.length > 0) {
 		items.push({ label: 'Add to existing filter', kind: vscode.QuickPickItemKind.Separator });
 	}
 	for (const filter of filters) {
-		const change = applyPatterns(filter, target, patterns, 'append');
+		const scoped = patternsForScope(kind, patterns, workspaceFolderOf(filter));
+		if (!scoped) { continue; }
+		const change = applyPatterns(filter, target, scoped, 'append');
 		let detail: string | undefined;
 		if (!change.changed) {
 			detail = '$(check) Already contains these patterns';
@@ -152,15 +164,23 @@ function pickTarget(title: string, items: TargetItem[]): Promise<TargetChoice | 
 async function offerFollowUp(message: string, saved: StoredSearchFilter, undo?: () => Promise<void>): Promise<void> {
 	const actions = undo ? ['Search Now', 'Edit Filter', 'Undo'] : ['Search Now', 'Edit Filter'];
 	const action = await vscode.window.showInformationMessage(message, ...actions);
-	if (action === 'Search Now') {
-		runSearch(saved);
-	} else if (action === 'Edit Filter') {
-		const result = await editFilterInteractively(saved);
-		if (result.outcome === 'saveAndSearch') {
-			runSearch(result.filter);
-		}
-	} else if (action === 'Undo' && undo) {
+	if (action === 'Undo' && undo) {
 		await undo();
+		return;
+	}
+	if (action !== 'Search Now' && action !== 'Edit Filter') { return; }
+	const current = (await loadAllFilters()).find(filter => filterKey(filter) === filterKey(saved));
+	if (!current) {
+		vscode.window.showInformationMessage('This filter no longer exists.');
+		return;
+	}
+	if (action === 'Search Now') {
+		await runSearch(current);
+	} else if (action === 'Edit Filter') {
+		const result = await editFilterInteractively(current);
+		if (result.outcome === 'saveAndSearch') {
+			await runSearch(result.filter);
+		}
 	}
 }
 
@@ -174,6 +194,11 @@ async function createFilter(kind: PatternKind, target: FilterPatternTarget, patt
 	}
 
 	const folder = scope === 'workspace' ? workspaceFolder : undefined;
+	const scopedPatterns = patternsForScope(kind, patterns, folder);
+	if (!scopedPatterns) {
+		vscode.window.showErrorMessage('Use a global filter for folders selected from multiple workspace roots.');
+		return;
+	}
 	const scopeText = scope === 'workspace' ? 'project' : 'global';
 	const existing = await loadAllFilters();
 	const name = await vscode.window.showInputBox({
@@ -196,8 +221,8 @@ async function createFilter(kind: PatternKind, target: FilterPatternTarget, patt
 
 	const filter: SearchFilter = {
 		name: name.trim(),
-		include: target === 'include' ? patterns.join(',') : '',
-		exclude: target === 'exclude' ? patterns.join(',') : '',
+		include: target === 'include' ? scopedPatterns.join(',') : '',
+		exclude: target === 'exclude' ? scopedPatterns.join(',') : '',
 		scope,
 		enabled: scope === 'global' ? true : undefined
 	};
@@ -215,7 +240,7 @@ async function addPatternsToFilter(kind: PatternKind, target: FilterPatternTarge
 	// Project filters of other roots would receive paths that belong to this root.
 	const filters = (await loadAllFilters()).filter(filter => filter.scope !== 'workspace'
 		|| workspaceFolderOf(filter)?.uri.toString() === contextFolder?.uri.toString());
-	const choice = await pickTarget(describePatterns(kind, target, patterns), targetItems(filters, target, patterns));
+	const choice = await pickTarget(describePatterns(kind, target, patterns), targetItems(filters, kind, target, patterns));
 	if (!choice) {
 		return;
 	}
@@ -224,8 +249,14 @@ async function addPatternsToFilter(kind: PatternKind, target: FilterPatternTarge
 		return;
 	}
 
-	const before = choice.item.filter;
-	const change = applyPatterns(before, target, patterns, choice.mode);
+	const before = (await loadAllFilters()).find(filter => filterKey(filter) === filterKey(choice.item.filter!));
+	if (!before) {
+		vscode.window.showInformationMessage('This filter no longer exists.');
+		return;
+	}
+	const scopedPatterns = patternsForScope(kind, patterns, workspaceFolderOf(before));
+	if (!scopedPatterns) { return; }
+	const change = applyPatterns(before, target, scopedPatterns, choice.mode);
 	if (!change.changed) {
 		vscode.window.showInformationMessage(`Filter '${before.name}' already contains ${patterns.join(', ')} in '${target}'. No changes made.`);
 		return;
@@ -237,6 +268,12 @@ async function addPatternsToFilter(kind: PatternKind, target: FilterPatternTarge
 	const verb = choice.mode === 'replace' ? `Replaced '${target}' of '${before.name}' with` : `Added to '${target}' of '${before.name}':`;
 	const movedNote = change.moved.length > 0 ? ` Moved ${change.moved.join(', ')} out of '${opposite}'.` : '';
 	await offerFollowUp(`${verb} ${patterns.join(', ')}.${movedNote}`, change.filter, async () => {
+		const current = (await loadAllFilters()).find(filter => filterKey(filter) === filterKey(before));
+		if (!current || current.include !== change.filter.include || current.exclude !== change.filter.exclude
+			|| (current.enabled !== false) !== (change.filter.enabled !== false)) {
+			vscode.window.showWarningMessage('Cannot undo: this filter was changed or deleted after this operation.');
+			return;
+		}
 		await saveFilter(before, folder);
 		vscode.window.showInformationMessage(`Restored filter '${before.name}'.`);
 	});

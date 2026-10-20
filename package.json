@@ -7,7 +7,7 @@
     "type": "git",
     "url": "https://github.com/EWYan/custom-search-filters.git"
   },
-  "version": "1.0.1",
+  "version": "1.1.0",
   "engines": {
     "vscode": "^1.96.2"
   },
@@ -21,7 +21,8 @@
       {
         "command": "custom-search-filters.addFilter",
         "category": "Custom Search",
-        "title": "Add Filter"
+        "title": "Add Filter",
+        "icon": "$(add)"
       },
       {
         "command": "custom-search-filters.selectAndSearch",
@@ -63,6 +64,36 @@
         "command": "custom-search-filters.addFileTypeToExclude",
         "category": "Custom Search",
         "title": "Exclude File Type..."
+      },
+      {
+        "command": "custom-search-filters.showFilters",
+        "category": "Custom Search",
+        "title": "Show Filters Panel",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "custom-search-filters.applySelectedFilters",
+        "category": "Custom Search",
+        "title": "Apply Selected Filters",
+        "icon": "$(play)"
+      },
+      {
+        "command": "custom-search-filters.clearFilterSelection",
+        "category": "Custom Search",
+        "title": "Clear Filter Selection",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "custom-search-filters.refreshFilters",
+        "category": "Custom Search",
+        "title": "Refresh Filters",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "custom-search-filters.editPanelFilter",
+        "category": "Custom Search",
+        "title": "Edit Filter",
+        "icon": "$(edit)"
       }
     ],
     "submenus": [
@@ -137,6 +168,10 @@
         {
           "command": "custom-search-filters.addFileTypeToExclude",
           "when": "false"
+        },
+        {
+          "command": "custom-search-filters.editPanelFilter",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -144,6 +179,31 @@
           "command": "custom-search-filters.selectAndSearch",
           "when": "view == workbench.view.search",
           "group": "navigation"
+        },
+        {
+          "command": "custom-search-filters.applySelectedFilters",
+          "when": "view == custom-search-filters.filters",
+          "group": "navigation@1"
+        },
+        {
+          "command": "custom-search-filters.clearFilterSelection",
+          "when": "view == custom-search-filters.filters",
+          "group": "navigation@2"
+        },
+        {
+          "command": "custom-search-filters.addFilter",
+          "when": "view == custom-search-filters.filters",
+          "group": "navigation@3"
+        },
+        {
+          "command": "custom-search-filters.refreshFilters",
+          "when": "view == custom-search-filters.filters",
+          "group": "navigation@4"
+        },
+        {
+          "command": "custom-search-filters.showFilters",
+          "when": "view == workbench.view.search",
+          "group": "navigation@2"
         }
       ],
       "editor/title": [
@@ -179,6 +239,31 @@
           "command": "custom-search-filters.addFileTypeToExclude",
           "when": "resourceExtname != '' && !explorerResourceIsFolder",
           "group": "2_fileType@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "custom-search-filters.editPanelFilter",
+          "when": "view == custom-search-filters.filters && viewItem == searchFilter",
+          "group": "inline"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "custom-search-filters",
+          "title": "Search Filters",
+          "icon": "media/filter.svg"
+        }
+      ]
+    },
+    "views": {
+      "custom-search-filters": [
+        {
+          "id": "custom-search-filters.filters",
+          "name": "Filters",
+          "visibility": "visible"
         }
       ]
     }

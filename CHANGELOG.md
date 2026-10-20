@@ -59,6 +59,8 @@ All notable changes to the "custom-search-filters" extension will be documented 
 
 ### Added
 
+- Add a persistent **Search Filters** panel with checkboxes, grouped scopes, a combined rule preview, explicit Apply, and Clear Selection.
+- Remember checked filters per workspace independently of enabled states; refresh on settings, project file, and workspace-root changes.
 - Add an edit button to each entry in **Select Filter and Search**.
 - Replace the sequential prompts of **Edit Filter** with a filter editor: pick only the fields to change, see modified fields marked, validate names as they are typed, remove individual patterns from a checklist, toggle the enabled state, and save, save and search, or discard.
 - Add **Search Now**, **Edit Filter**, and **Undo** to the confirmation after adding folders or file types from the Explorer.
@@ -72,12 +74,16 @@ All notable changes to the "custom-search-filters" extension will be documented 
 - List only global filters and project filters of the selected resource's workspace root when adding from the Explorer.
 - Read global filters and enabled states from user settings only. Workspace or folder values for `custom-search-filters.globalFilters` and `custom-search-filters.globalFiltersEnabled` are now ignored.
 - Rely on VS Code's implicit command activation instead of listing every command in `activationEvents`.
+- Preserve regex, case-sensitive, and whole-word search options when applying filters.
 
 ### Fixed
 
 - Stop copying workspace-level setting overrides into user settings when global filters are added, edited, or deleted, and make deleted filters disappear even when a workspace override exists.
 - Honor `"enabled": false` on workspace filters in `.vscode/custom-search-filters.json`.
-- Prefix folder patterns with the workspace folder name in multi-root workspaces (e.g., `./frontend/src/**/*`) so they only match inside that root.
+- Store project folder patterns relatively and qualify them at search time, so they work in both multi-root and standalone projects.
 - Move a pattern out of a filter's other list when adding it from the Explorer, so a filter never includes and excludes the same pattern.
 - Leave a filter unchanged when appended patterns are already present with different spacing, instead of rewriting it.
 - Keep a renamed filter in its original position and save the rename in a single write instead of saving the new name and then deleting the old one.
+- Keep brace groups and character classes intact when splitting or removing glob patterns.
+- Prevent an old Undo notification from overwriting later changes or resurrecting a deleted filter.
+- Qualify global include rules per root when combining them with project rules, preserving OR semantics in VS Code's search parser.

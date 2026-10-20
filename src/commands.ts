@@ -87,7 +87,7 @@ async function selectAndSearch(): Promise<void> {
 			quickPick.dispose();
 			const result = await editFilterInteractively(event.item.filter);
 			if (result.outcome === 'saveAndSearch') {
-				runSearch(result.filter);
+				await runSearch(result.filter);
 			} else {
 				await selectAndSearch();
 			}
@@ -106,14 +106,14 @@ async function selectAndSearch(): Promise<void> {
 		}
 	});
 
-	quickPick.onDidAccept(() => {
+	quickPick.onDidAccept(async () => {
 		const selectedFilter = quickPick.selectedItems[0]?.filter;
 		if (!selectedFilter) {
 			return;
 		}
 
 		quickPick.dispose();
-		runSearch(selectedFilter);
+		await runSearch(selectedFilter);
 	});
 
 	quickPick.onDidHide(() => quickPick.dispose());
@@ -154,7 +154,7 @@ async function editFilter(): Promise<void> {
 
 	const result = await editFilterInteractively(selectedItem.filter);
 	if (result.outcome === 'saveAndSearch') {
-		runSearch(result.filter);
+		await runSearch(result.filter);
 	}
 }
 

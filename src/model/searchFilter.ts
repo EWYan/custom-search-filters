@@ -39,7 +39,52 @@ export function scopeLabel(filter: StoredSearchFilter): string {
 }
 
 export function splitPatterns(pattern: string | undefined | null): string[] {
-	return (pattern || '').split(',').map(part => part.trim()).filter(part => part !== '');
+	const result: string[] = [];
+	let braces = 0;
+	let inClass = false;
+	let start = 0;
+	const value = pattern || '';
+	for (let i = 0; i < value.length; i++) {
+		const char = value[i];
+		if (inClass) {
+			if (char === ']') { inClass = false; }
+		} else if (char === '[') {
+			inClass = true;
+		} else if (char === '{') {
+			braces++;
+		} else if (char === '}') {
+			braces = Math.max(0, braces - 1);
+		} else if (char === ',' && braces === 0) {
+			result.push(value.slice(start, i).trim());
+			start = i + 1;
+		}
+	}
+	result.push(value.slice(start).trim());
+	return result.filter(Boolean);
+}
+
+export function filterKey(filter: StoredSearchFilter): string {
+	return JSON.stringify([
+		filter.scope || 'global',
+		filter.scope === 'workspace' ? (filter as WorkspaceSearchFilter).workspaceFolder.uri.toString() : '',
+		filter.name
+	]);
+}
+
+export interface CombinedFilters extends SearchFilter {
+	conflicts: string[];
+}
+
+export function combineFilters(filters: SearchFilter[]): CombinedFilters {
+	const active = filters.filter(filter => filter.enabled !== false);
+	const includes = [...new Set(active.flatMap(filter => splitPatterns(filter.include)))];
+	const excludes = [...new Set(active.flatMap(filter => splitPatterns(filter.exclude)))];
+	const excluded = new Set(excludes);
+	return {
+		name: 'Selected filters', scope: 'global',
+		include: includes.join(','), exclude: excludes.join(','),
+		conflicts: includes.filter(pattern => excluded.has(pattern))
+	};
 }
 
 export function appendToPattern(existingPattern: string | undefined | null, pathToAdd: string): string {
@@ -60,8 +105,8 @@ export interface PatternChange<T extends SearchFilter> {
 	changed: boolean;
 }
 
-// Adds patterns to one list and removes identical ones from the other: a pattern
-// in both include and exclude would make the filter match nothing.
+// Adds patterns to one list and removes identical ones from the other so they
+// do not contradict each other. Used by Explorer commands, not rule combination.
 export function applyPatterns<T extends SearchFilter>(
 	filter: T,
 	target: FilterPatternTarget,

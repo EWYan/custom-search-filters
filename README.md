@@ -20,6 +20,21 @@ All commands can be accessed via the Command Palette (Ctrl+Shift+P or Cmd+Shift+
 *   **Custom Search: Edit Filter**:
     *   Shows a list of all saved filters, including disabled ones.
     *   Selecting a filter opens the filter editor (see [Editing Filters](#editing-filters)).
+
+## Persistent Filters Panel
+
+Run **Custom Search: Show Filters Panel**, click the list-tree icon in the Search view title, or open **Search Filters** in the bottom panel. Filters are grouped by global scope and workspace root. Use the pencil action to edit a filter; disabled filters remain visible without a checkbox.
+
+1. Check the filters to combine. The panel previews the resulting **Include** and **Exclude** patterns, including exact overlaps where exclusion takes precedence.
+2. Click **Apply Selected Filters** (play icon) to fill the native search path fields and run the search. Checking boxes alone never starts a search.
+3. **Clear Filter Selection** only clears checkboxes. Click **Apply** with nothing checked to clear both search path fields.
+
+Include patterns are combined with **OR**; all exclude patterns apply to the combined scope. An exclusion-only filter does not broaden another filter's include scope. For example, combining `src/**` and `**/*.ts` searches either match, rather than only TypeScript files inside `src`. This combines rules, not the independent search results of each filter. Duplicate patterns are removed; brace expressions such as `**/*.{ts,js}` remain intact. Includes and excludes are never moved between the original filters by the panel.
+
+Checkboxes are saved per workspace, separately from each filter's enabled state. Reopening restores the selection without running a search. Renaming through the extension keeps the selection; deleting, disabling, or removing a filter's workspace root clears its selection. Settings and project file changes refresh the panel automatically.
+
+Applying uses VS Code's **Find in Files** command and preserves the current regex, case-sensitive, and whole-word options. VS Code controls focus and may seed the search term from the editor selection. It also honors `search.mode`: use `view` for the sidebar, or your configured Search Editor mode. Editing search fields manually does not change the panel's checkboxes; the next Apply replaces those path fields with the preview.
+
 ## Adding Folders and File Types from the Explorer
 
 Right-click one or more folders or files in the Explorer and open the **Search Filters** submenu, next to **Find in Folder...**:
@@ -29,12 +44,12 @@ Right-click one or more folders or files in the Explorer and open the **Search F
 | Folders | **Include Folder...**, **Exclude Folder...** | `src/utils/**/*` |
 | Files with an extension | **Include File Type...**, **Exclude File Type...** | `**/*.ts` |
 
-In a multi-root workspace, folder paths are prefixed with their workspace folder name (e.g., `./frontend/src/**/*`) so the pattern only matches inside that root. These commands work on the Explorer selection, so they are not listed in the Command Palette.
+Project filter paths are stored relative to the project (e.g., `src/**/*`) and qualified with the current workspace folder name when searching a workspace file (e.g., `./frontend/src/**/*`). They keep working when the project is opened alone. Global filters created from Explorer folders keep explicit workspace prefixes where needed. Use a global filter when selecting folders across multiple roots. These commands work on the Explorer selection, so they are not listed in the Command Palette.
 
 1.  A picker titled with the patterns being added (e.g., `Exclude 2 folders: dist/**/*, out/**/*`) lists **New Filter...** and your global filters plus the project filters of the selected folder's workspace root.
 2.  Select a filter to **append** the patterns. Patterns already present are skipped, and a filter that already contains all of them is marked and left unchanged. To replace the existing patterns instead, use the replace button on the filter's entry.
-3.  If a pattern being added is already in the filter's other list (for example, adding `src/**/*` to exclude while it is in include), it is moved out of that list, since a pattern in both lists would match nothing. The picker shows this before you choose.
-4.  The confirmation offers **Search Now**, **Edit Filter**, and **Undo**.
+3.  If a pattern being added is already in the filter's other list (for example, adding `src/**/*` to exclude while it is in include), it is moved out of that list so the exact pattern is not both included and excluded. The picker shows this before you choose.
+4.  The confirmation offers **Search Now**, **Edit Filter**, and **Undo**. Undo refuses to overwrite a later edit or restore a deleted filter.
 
 **New Filter...** asks for the scope (folders default to the current project, file types to global), then for a name with a suggestion such as `src` or `Exclude *.log files`, validated as you type.
 

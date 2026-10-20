@@ -375,12 +375,13 @@ suite('Multi-root folder patterns', () => {
 });
 
 suite('Manifest consistency', () => {
-	test('registers every contributed command and relies on implicit activation', () => {
+	test('registers every contributed command and relies on implicit activation', async () => {
 		const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8'));
 		const fixture = createExtensionFixture();
-		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+		await fixture.load<typeof import('../extension')>('extension').activate(fixture.context);
 		const contributed = manifest.contributes.commands.map((command: { command: string }) => command.command).sort();
 		assert.deepStrictEqual([...fixture.handlers.keys()].sort(), contributed);
 		assert.deepStrictEqual(manifest.activationEvents, []);
+		fixture.dispose();
 	});
 });

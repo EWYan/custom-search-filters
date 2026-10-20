@@ -14,7 +14,7 @@ interface PatternModeItem extends vscode.QuickPickItem {
 
 export interface FilterEditResult {
 	outcome: 'saved' | 'saveAndSearch' | 'cancelled';
-	filter: SearchFilter;
+	filter: StoredSearchFilter;
 }
 
 function isEnabled(filter: SearchFilter): boolean {
@@ -99,7 +99,7 @@ async function editPattern(draft: SearchFilter, target: FilterPatternTarget, tit
 export async function editFilterInteractively(original: StoredSearchFilter): Promise<FilterEditResult> {
 	const scope = original.scope || 'global';
 	const workspaceFolder = scope === 'workspace' ? (original as WorkspaceSearchFilter).workspaceFolder : undefined;
-	const draft: SearchFilter = { name: original.name, include: original.include, exclude: original.exclude, scope, enabled: original.enabled };
+	const draft: StoredSearchFilter = { ...original, scope };
 	const title = `Edit Filter: ${original.name} (${scopeLabel(original)})`;
 	const scopeText = scope === 'workspace' ? 'project' : 'global';
 	const existingFilters = await loadAllFilters();
@@ -122,7 +122,8 @@ export async function editFilterInteractively(original: StoredSearchFilter): Pro
 						if (!text.trim()) {
 							return 'Filter name cannot be empty.';
 						}
-						return hasNameConflict(existingFilters, text.trim(), scope, workspaceFolder, original.name)
+						const candidate = text === original.name ? text : text.trim();
+						return hasNameConflict(existingFilters, candidate, scope, workspaceFolder, original.name)
 							? `A filter named '${text.trim()}' already exists in this ${scopeText} scope.`
 							: null;
 					}
