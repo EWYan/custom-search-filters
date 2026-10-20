@@ -14,56 +14,61 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:custom-search-filters.addFilter",
-    "onCommand:custom-search-filters.selectAndSearch",
-    "onCommand:custom-search-filters.deleteFilter",
-    "onCommand:custom-search-filters.addFolderToInclude",
-    "onCommand:custom-search-filters.addFolderToExclude",
-    "onCommand:custom-search-filters.editFilter",
-    "onCommand:custom-search-filters.addFileTypeToInclude",
-    "onCommand:custom-search-filters.addFileTypeToExclude",
-    "onCommand:custom-search-filters.recoverLegacyFilters"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "custom-search-filters.addFilter",
-        "title": "Custom Search: Add Filter"
+        "category": "Custom Search",
+        "title": "Add Filter"
       },
       {
         "command": "custom-search-filters.selectAndSearch",
-        "title": "Custom Search: Select Filter and Search",
+        "category": "Custom Search",
+        "title": "Select Filter and Search",
         "icon": "$(filter)"
       },
       {
         "command": "custom-search-filters.deleteFilter",
-        "title": "Custom Search: Delete Filter"
+        "category": "Custom Search",
+        "title": "Delete Filter"
       },
       {
         "command": "custom-search-filters.addFolderToInclude",
-        "title": "Custom Search: Add Folder to Include Filter"
+        "category": "Custom Search",
+        "title": "Include Folder..."
       },
       {
         "command": "custom-search-filters.addFolderToExclude",
-        "title": "Custom Search: Add Folder to Exclude Filter"
+        "category": "Custom Search",
+        "title": "Exclude Folder..."
       },
       {
         "command": "custom-search-filters.editFilter",
-        "title": "Custom Search: Edit Filter"
+        "category": "Custom Search",
+        "title": "Edit Filter"
       },
       {
         "command": "custom-search-filters.recoverLegacyFilters",
-        "title": "Custom Search: Recover Legacy Filters"
+        "category": "Custom Search",
+        "title": "Recover Legacy Filters"
       },
       {
         "command": "custom-search-filters.addFileTypeToInclude",
-        "title": "Custom Search: Add File Type to Include Filter"
+        "category": "Custom Search",
+        "title": "Include File Type..."
       },
       {
         "command": "custom-search-filters.addFileTypeToExclude",
-        "title": "Custom Search: Add File Type to Exclude Filter"
+        "category": "Custom Search",
+        "title": "Exclude File Type..."
+      }
+    ],
+    "submenus": [
+      {
+        "id": "custom-search-filters.explorerSubmenu",
+        "label": "Search Filters"
       }
     ],
     "configuration": {
@@ -72,7 +77,7 @@
         "custom-search-filters.globalFilters": {
           "type": "array",
           "default": [],
-          "description": "Global search filters that are available across all projects. These filters can be synced via VS Code Settings Sync.",
+          "description": "Global search filters that are available across all projects. These filters can be synced via VS Code Settings Sync. Only user settings are used; workspace values are ignored.",
           "items": {
             "type": "object",
             "required": [
@@ -108,7 +113,7 @@
         "custom-search-filters.globalFiltersEnabled": {
           "type": "object",
           "default": {},
-          "description": "Enable/disable global filters. Each filter name maps to a boolean value indicating if it's enabled. All global filters are automatically added here when created, and removed when deleted. Filters are enabled (true) by default.",
+          "description": "Enable/disable global filters. Each filter name maps to a boolean value indicating if it's enabled. All global filters are automatically added here when created, and removed when deleted. Filters are enabled (true) by default. Only user settings are used; workspace values are ignored.",
           "additionalProperties": {
             "type": "boolean"
           }
@@ -116,6 +121,24 @@
       }
     },
     "menus": {
+      "commandPalette": [
+        {
+          "command": "custom-search-filters.addFolderToInclude",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.addFolderToExclude",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.addFileTypeToInclude",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.addFileTypeToExclude",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "custom-search-filters.selectAndSearch",
@@ -131,24 +154,31 @@
       ],
       "explorer/context": [
         {
+          "submenu": "custom-search-filters.explorerSubmenu",
+          "when": "explorerResourceIsFolder || resourceExtname != ''",
+          "group": "4_search@10"
+        }
+      ],
+      "custom-search-filters.explorerSubmenu": [
+        {
           "command": "custom-search-filters.addFolderToInclude",
           "when": "explorerResourceIsFolder",
-          "group": "navigation@5"
+          "group": "1_folder@1"
         },
         {
           "command": "custom-search-filters.addFolderToExclude",
           "when": "explorerResourceIsFolder",
-          "group": "navigation@6"
+          "group": "1_folder@2"
         },
         {
           "command": "custom-search-filters.addFileTypeToInclude",
           "when": "resourceExtname != '' && !explorerResourceIsFolder",
-          "group": "navigation@7"
+          "group": "2_fileType@1"
         },
         {
           "command": "custom-search-filters.addFileTypeToExclude",
           "when": "resourceExtname != '' && !explorerResourceIsFolder",
-          "group": "navigation@8"
+          "group": "2_fileType@2"
         }
       ]
     }

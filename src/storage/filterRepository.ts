@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SearchFilter, StoredSearchFilter, WorkspaceSearchFilter } from '../model/searchFilter';
+import { FilterScope, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter } from '../model/searchFilter';
 import { loadGlobalFilters, saveGlobalFilters } from './globalFilters';
 import { getWorkspaceFolderForUri, loadAllWorkspaceFilters, loadWorkspaceFilters, saveWorkspaceFilters } from './workspaceFilters';
 
@@ -10,8 +10,28 @@ export async function loadAllFilters(): Promise<StoredSearchFilter[]> {
 	];
 }
 
-export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: vscode.WorkspaceFolder): Promise<void> {
+export function hasNameConflict(
+	filters: StoredSearchFilter[],
+	name: string,
+	scope: FilterScope,
+	workspaceFolder?: vscode.WorkspaceFolder,
+	originalName?: string
+): boolean {
+	return filters.some(existing => {
+		if (existing.name !== name || existing.name === originalName || existing.scope !== scope) {
+			return false;
+		}
+		if (scope !== 'workspace') {
+			return true;
+		}
+		return (existing as WorkspaceSearchFilter).workspaceFolder.uri.toString() === workspaceFolder?.uri.toString();
+	});
+}
+
+// Pass originalName when renaming so the filter keeps its position and is written once.
+export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: vscode.WorkspaceFolder, originalName?: string): Promise<void> {
 	const scope = filter.scope || 'global';
+	const nameToReplace = originalName ?? filter.name;
 
 	if (scope === 'workspace') {
 		const workspaceFolder = targetWorkspaceFolder || getWorkspaceFolderForUri();
@@ -20,7 +40,7 @@ export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: v
 		}
 
 		const filters = await loadWorkspaceFilters(workspaceFolder);
-		const existingIndex = filters.findIndex(existing => existing.name === filter.name);
+		const existingIndex = filters.findIndex(existing => existing.name === nameToReplace);
 		if (existingIndex > -1) {
 			filters[existingIndex] = { ...filter, scope: 'workspace', workspaceFolder };
 		} else {
@@ -31,7 +51,7 @@ export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: v
 	}
 
 	const filters = loadGlobalFilters();
-	const existingIndex = filters.findIndex(existing => existing.name === filter.name);
+	const existingIndex = filters.findIndex(existing => existing.name === nameToReplace);
 	if (existingIndex > -1) {
 		filters[existingIndex] = {
 			...filter,

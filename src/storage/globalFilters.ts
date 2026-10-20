@@ -8,8 +8,10 @@ const ENABLED_KEY = 'globalFiltersEnabled';
 export function loadGlobalFilters(): SearchFilter[] {
 	try {
 		const config = vscode.workspace.getConfiguration(SECTION);
-		const filters = config.get<unknown>(FILTERS_KEY, []);
-		const enabledValue = config.get<unknown>(ENABLED_KEY, {});
+		// Saves target user settings, so read user values only: workspace overrides
+		// would otherwise be copied into user settings on the next write.
+		const filters = config.inspect<unknown>(FILTERS_KEY)?.globalValue ?? [];
+		const enabledValue = config.inspect<unknown>(ENABLED_KEY)?.globalValue ?? {};
 		const enabledMap = enabledValue !== null && typeof enabledValue === 'object' && !Array.isArray(enabledValue)
 			? enabledValue as Record<string, unknown>
 			: {};

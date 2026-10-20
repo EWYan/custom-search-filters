@@ -54,3 +54,30 @@ All notable changes to the "custom-search-filters" extension will be documented 
 - Preserve stored filter names exactly, including whitespace, so upgrades do not reset disabled states or collapse distinct names.
 - Save enabled states before filter definitions so a failed migration can be retried without losing disabled states.
 - Preserve enabled states for filter names such as `__proto__`.
+
+## [Unreleased]
+
+### Added
+
+- Add an edit button to each entry in **Select Filter and Search**.
+- Replace the sequential prompts of **Edit Filter** with a filter editor: pick only the fields to change, see modified fields marked, validate names as they are typed, remove individual patterns from a checklist, toggle the enabled state, and save, save and search, or discard.
+- Add **Search Now**, **Edit Filter**, and **Undo** to the confirmation after adding folders or file types from the Explorer.
+
+### Changed
+
+- Group the Explorer commands in a **Search Filters** submenu next to **Find in Folder...**, with shorter titles (**Include Folder...**, **Exclude Folder...**, **Include File Type...**, **Exclude File Type...**), and hide them from the Command Palette, where they need an Explorer selection.
+- Show all commands under a **Custom Search** category instead of repeating the prefix in every title.
+- Add Explorer patterns to a filter in one step: selecting a filter appends, and replacing moves to a button on the filter's entry. Filters that already contain the patterns are marked, and the picker title shows the patterns being added.
+- Create a filter from the Explorer in two steps, scope then name, with a suggested name and a scope default based on the pattern type. The optional prompt for the other pattern list is gone; use **Edit Filter** afterwards.
+- List only global filters and project filters of the selected resource's workspace root when adding from the Explorer.
+- Read global filters and enabled states from user settings only. Workspace or folder values for `custom-search-filters.globalFilters` and `custom-search-filters.globalFiltersEnabled` are now ignored.
+- Rely on VS Code's implicit command activation instead of listing every command in `activationEvents`.
+
+### Fixed
+
+- Stop copying workspace-level setting overrides into user settings when global filters are added, edited, or deleted, and make deleted filters disappear even when a workspace override exists.
+- Honor `"enabled": false` on workspace filters in `.vscode/custom-search-filters.json`.
+- Prefix folder patterns with the workspace folder name in multi-root workspaces (e.g., `./frontend/src/**/*`) so they only match inside that root.
+- Move a pattern out of a filter's other list when adding it from the Explorer, so a filter never includes and excludes the same pattern.
+- Leave a filter unchanged when appended patterns are already present with different spacing, instead of rewriting it.
+- Keep a renamed filter in its original position and save the rename in a single write instead of saving the new name and then deleting the old one.

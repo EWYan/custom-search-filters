@@ -10,14 +10,29 @@ interface FixtureOptions {
 	workspaceSettings?: Record<string, unknown>;
 	legacy?: unknown;
 	workspaceFilters?: unknown[];
+	extraWorkspaceFilters?: unknown[];
+	extraWorkspaceFolderNames?: string[];
 	fileType?: vscode.FileType;
 	beforeUpdate?: (key: string, value: unknown) => Promise<void>;
 	configurationError?: Error;
 }
 
 interface PickerItem {
+	label?: string;
 	filter?: SearchFilter;
 	action?: string;
+	value?: string;
+	description?: string;
+	detail?: string;
+	buttons?: vscode.QuickInputButton[];
+}
+
+// A scripted answer: an action, value, filter name or label to pick; labels to check in a
+// multi-select pick; an item button to press; or undefined to dismiss with Escape.
+type PickAnswer = string | string[] | { item: string; button: number } | undefined;
+
+function matches(item: PickerItem, answer: string): boolean {
+	return item.action === answer || item.value === answer || item.filter?.name === answer || item.label === answer;
 }
 
 export function createExtensionFixture(options: FixtureOptions = {}) {
@@ -28,15 +43,62 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 	const choices: PickerItem[][] = [];
 	const updates: string[] = [];
 	const diagnostics: unknown[][] = [];
+	const workspaceWrites: unknown[] = [];
+	const picks: PickAnswer[] = [];
+	const inputs: Array<string | undefined> = [];
+	const inputBoxes: vscode.InputBoxOptions[] = [];
+	const executed: Array<{ command: string; args: unknown[] }> = [];
 	const folder: vscode.WorkspaceFolder = {
 		name: 'fixture', index: 0,
 		uri: vscode.Uri.file(path.join(os.tmpdir(), 'custom-search-filters-fixture'))
 	};
+	const workspaceFolders: vscode.WorkspaceFolder[] = [folder, ...(options.extraWorkspaceFolderNames || []).map((name, index) => ({
+		name, index: index + 1,
+		uri: vscode.Uri.file(path.join(os.tmpdir(), `custom-search-filters-fixture-${name}`))
+	}))];
+	type ButtonHandler = (event: { item: PickerItem; button: vscode.QuickInputButton }) => Promise<void> | void;
 	const picker = {
+		title: undefined as string | undefined,
 		items: [] as PickerItem[],
-		dispose() {}, show() {}, onDidAccept() {}, onDidHide() {}, onDidTriggerItemButton() {}
+		selectedItems: [] as PickerItem[],
+		created: 0,
+		triggerItemButton: undefined as ButtonHandler | undefined,
+		acceptHandler: undefined as (() => void) | undefined,
+		hideHandler: undefined as (() => void) | undefined,
+		dispose() {},
+		// Answers queued in `picks` drive the picker once it is shown; otherwise it stays open.
+		show() {
+			if (picks.length === 0) {
+				return;
+			}
+			choices.push(picker.items);
+			const answer = picks.shift();
+			setImmediate(() => {
+				if (answer === undefined) {
+					picker.hide();
+				} else if (typeof answer === 'object' && !Array.isArray(answer)) {
+					const item = picker.items.find(entry => matches(entry, answer.item))!;
+					picker.triggerItemButton?.({ item, button: item.buttons![answer.button] });
+				} else {
+					picker.selectedItems = picker.items.filter(entry => matches(entry, String(answer)));
+					picker.acceptHandler?.();
+				}
+			});
+		},
+		hide() {
+			picker.hideHandler?.();
+		},
+		onDidAccept(handler: () => void) {
+			picker.acceptHandler = handler;
+		},
+		onDidHide(handler: () => void) {
+			picker.hideHandler = handler;
+		},
+		onDidTriggerItemButton(handler: ButtonHandler) {
+			picker.triggerItemButton = handler;
+		}
 	};
-	const selection = { action: 'overwrite', warning: undefined as string | undefined };
+	const selection = { action: 'overwrite', warning: undefined as string | undefined, info: undefined as string | undefined };
 	const config = {
 		get: (key: string, fallback: unknown) => options.workspaceSettings?.[key] ?? (settings.has(key) ? settings.get(key) : fallback),
 		inspect: (key: string) => ({ key, globalValue: settings.get(key) }),
@@ -48,9 +110,9 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 	};
 	const api = {
 		Uri: vscode.Uri, FileType: vscode.FileType, FileSystemError: vscode.FileSystemError,
-		ConfigurationTarget: vscode.ConfigurationTarget, ThemeIcon: vscode.ThemeIcon,
+		ConfigurationTarget: vscode.ConfigurationTarget, ThemeIcon: vscode.ThemeIcon, QuickPickItemKind: vscode.QuickPickItemKind,
 		workspace: {
-			workspaceFolders: [folder],
+			workspaceFolders,
 			getWorkspaceFolder: () => folder,
 			getConfiguration: () => {
 				if (options.configurationError) {
@@ -60,20 +122,46 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 			},
 			fs: {
 				stat: async () => ({ type: options.fileType ?? vscode.FileType.Directory }),
-				readFile: async () => Buffer.from(JSON.stringify(options.workspaceFilters || []))
+				readFile: async (uri: vscode.Uri) => uri.fsPath.startsWith(folder.uri.fsPath + path.sep)
+					? Buffer.from(JSON.stringify(options.workspaceFilters || []))
+					: Buffer.from(JSON.stringify(options.extraWorkspaceFilters || [])),
+				createDirectory: async () => {},
+				writeFile: async (_uri: vscode.Uri, content: Uint8Array) => {
+					workspaceWrites.push(JSON.parse(Buffer.from(content).toString('utf8')));
+				}
 			}
 		},
 		window: {
-			showInformationMessage: async (message: string) => { messages.push(message); },
+			showInformationMessage: async (message: string) => {
+				messages.push(message);
+				return selection.info;
+			},
 			showErrorMessage: async (message: string) => { messages.push(message); },
 			showWarningMessage: async (message: string) => { messages.push(message); return selection.warning; },
 			showQuickPick: async (items: PickerItem[]) => {
 				choices.push(items);
+				if (picks.length > 0) {
+					const answer = picks.shift();
+					if (Array.isArray(answer)) {
+						return items.filter(item => item.label !== undefined && answer.includes(item.label));
+					}
+					return typeof answer === 'string' ? items.find(item => matches(item, answer)) : undefined;
+				}
 				return items.find(item => item.action === selection.action) || items.find(item => item.filter);
 			},
-			createQuickPick: () => picker
+			showInputBox: async (inputOptions: vscode.InputBoxOptions) => {
+				inputBoxes.push(inputOptions);
+				return inputs.shift();
+			},
+			createQuickPick: () => {
+				picker.created++;
+				return picker;
+			}
 		},
 		commands: {
+			executeCommand: async (command: string, ...args: unknown[]) => {
+				executed.push({ command, args });
+			},
 			registerCommand: (id: string, handler: (...args: unknown[]) => Promise<void>) => {
 				handlers.set(id, handler);
 				return { dispose: () => handlers.delete(id) };
@@ -122,5 +210,5 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 		await handler(...args);
 	}
 
-	return { settings, state, handlers, messages, choices, updates, diagnostics, folder, picker, selection, context, load, runCommand };
+	return { settings, state, handlers, messages, choices, updates, diagnostics, workspaceWrites, picks, inputs, inputBoxes, executed, folder, picker, selection, context, load, runCommand };
 }
