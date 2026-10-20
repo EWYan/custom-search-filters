@@ -2,36 +2,43 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-
-// You can import and use all API from the 'vscode' module
-// as well as import your extension to test it
 import * as vscode from 'vscode';
-// import * as myExtension from '../../extension';
+import { appendToPattern, compareVersions, normalizeFilter } from '../model/searchFilter';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
 
-	test('Sample test', () => {
-		assert.strictEqual(-1, [1, 2, 3].indexOf(5));
-		assert.strictEqual(-1, [1, 2, 3].indexOf(0));
+	test('appendToPattern appends unique comma separated patterns', () => {
+		assert.strictEqual(appendToPattern('', 'src/**/*'), 'src/**/*');
+		assert.strictEqual(appendToPattern('src/**/*', '**/*.ts'), 'src/**/*,**/*.ts');
+		assert.strictEqual(appendToPattern('src/**/*, **/*.ts', '**/*.ts'), 'src/**/*,**/*.ts');
+	});
+
+	test('compareVersions compares semantic version parts', () => {
+		assert.strictEqual(compareVersions('0.1.3', '0.1.4'), -1);
+		assert.strictEqual(compareVersions('0.2.0', '0.1.9'), 1);
+		assert.strictEqual(compareVersions('1.0', '1.0.0'), 0);
+	});
+
+	test('normalizeFilter fills missing fields and preserves stored names', () => {
+		assert.deepStrictEqual(normalizeFilter({ name: '  api  ', include: 'src/**' }, 'global'), {
+			name: '  api  ',
+			include: 'src/**',
+			exclude: '',
+			scope: 'global',
+			enabled: undefined
+		});
 	});
 
 	test('Folder detection with dots in name', () => {
-		// Create a temporary directory with dots in the name
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test.folder.with.dots'));
-		
 		try {
-			// Test the old logic (should fail)
 			const hasExtension = path.extname(tempDir) !== '';
 			assert.strictEqual(hasExtension, true, 'Old logic incorrectly identifies folder with dots as having extension');
-			
-			// Test the new logic (should work)
+
 			const stats = fs.statSync(tempDir);
-			const isDirectory = stats.isDirectory();
-			assert.strictEqual(isDirectory, true, 'New logic correctly identifies folder with dots as directory');
-			
+			assert.strictEqual(stats.isDirectory(), true, 'New logic correctly identifies folder with dots as directory');
 		} finally {
-			// Clean up
 			fs.rmSync(tempDir, { recursive: true, force: true });
 		}
 	});

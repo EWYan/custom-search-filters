@@ -1,13 +1,13 @@
 {
   "name": "custom-search-filters",
   "displayName": "custom-search-filters",
-  "description": "nice filter",
+  "description": "Manage reusable include and exclude filters for VS Code file search",
   "publisher": "juzidaxia",
   "repository": {
     "type": "git",
     "url": "https://github.com/EWYan/custom-search-filters.git"
   },
-  "version": "0.1.4",
+  "version": "1.0.1",
   "engines": {
     "vscode": "^1.96.2"
   },
@@ -22,7 +22,8 @@
     "onCommand:custom-search-filters.addFolderToExclude",
     "onCommand:custom-search-filters.editFilter",
     "onCommand:custom-search-filters.addFileTypeToInclude",
-    "onCommand:custom-search-filters.addFileTypeToExclude"
+    "onCommand:custom-search-filters.addFileTypeToExclude",
+    "onCommand:custom-search-filters.recoverLegacyFilters"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -53,6 +54,10 @@
         "title": "Custom Search: Edit Filter"
       },
       {
+        "command": "custom-search-filters.recoverLegacyFilters",
+        "title": "Custom Search: Recover Legacy Filters"
+      },
+      {
         "command": "custom-search-filters.addFileTypeToInclude",
         "title": "Custom Search: Add File Type to Include Filter"
       },
@@ -70,6 +75,12 @@
           "description": "Global search filters that are available across all projects. These filters can be synced via VS Code Settings Sync.",
           "items": {
             "type": "object",
+            "required": [
+              "name",
+              "include",
+              "exclude"
+            ],
+            "additionalProperties": false,
             "properties": {
               "name": {
                 "type": "string",
@@ -85,8 +96,11 @@
               },
               "scope": {
                 "type": "string",
-                "enum": ["global"],
-                "description": "Filter scope (should be 'global' for settings)"
+                "enum": [
+                  "global"
+                ],
+                "default": "global",
+                "description": "Filter scope for global settings"
               }
             }
           }
@@ -106,15 +120,13 @@
         {
           "command": "custom-search-filters.selectAndSearch",
           "when": "view == workbench.view.search",
-          "group": "navigation",
-          "icon": "$(filter)"
+          "group": "navigation"
         }
       ],
       "editor/title": [
         {
           "command": "custom-search-filters.selectAndSearch",
-          "group": "navigation",
-          "icon": "$(filter)" 
+          "group": "navigation"
         }
       ],
       "explorer/context": [
@@ -130,12 +142,12 @@
         },
         {
           "command": "custom-search-filters.addFileTypeToInclude",
-          "when": "resourceExtname != ''",
+          "when": "resourceExtname != '' && !explorerResourceIsFolder",
           "group": "navigation@7"
         },
         {
           "command": "custom-search-filters.addFileTypeToExclude",
-          "when": "resourceExtname != ''",
+          "when": "resourceExtname != '' && !explorerResourceIsFolder",
           "group": "navigation@8"
         }
       ]
