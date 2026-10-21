@@ -94,6 +94,18 @@
         "category": "Custom Search",
         "title": "Edit Filter",
         "icon": "$(edit)"
+      },
+      {
+        "command": "custom-search-filters.pinFilter",
+        "category": "Custom Search",
+        "title": "Pin Filter",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "custom-search-filters.unpinFilter",
+        "category": "Custom Search",
+        "title": "Unpin Filter",
+        "icon": "$(pinned)"
       }
     ],
     "submenus": [
@@ -151,6 +163,18 @@
         }
       }
     },
+    "colors": [
+      {
+        "id": "customSearchFilters.pinnedForeground",
+        "description": "Color of pinned filters in the Search Filters panel.",
+        "defaults": {
+          "dark": "charts.yellow",
+          "light": "charts.orange",
+          "highContrast": "charts.yellow",
+          "highContrastLight": "charts.orange"
+        }
+      }
+    ],
     "menus": {
       "commandPalette": [
         {
@@ -171,6 +195,14 @@
         },
         {
           "command": "custom-search-filters.editPanelFilter",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.pinFilter",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.unpinFilter",
           "when": "false"
         }
       ],
@@ -243,9 +275,19 @@
       ],
       "view/item/context": [
         {
-          "command": "custom-search-filters.editPanelFilter",
+          "command": "custom-search-filters.pinFilter",
           "when": "view == custom-search-filters.filters && viewItem == searchFilter",
-          "group": "inline"
+          "group": "inline@1"
+        },
+        {
+          "command": "custom-search-filters.unpinFilter",
+          "when": "view == custom-search-filters.filters && viewItem == searchFilter.pinned",
+          "group": "inline@1"
+        },
+        {
+          "command": "custom-search-filters.editPanelFilter",
+          "when": "view == custom-search-filters.filters && viewItem =~ /^searchFilter/",
+          "group": "inline@2"
         }
       ]
     },

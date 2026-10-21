@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
-import { FilterScope, SearchFilter, StoredSearchFilter, scopeLabel } from './model/searchFilter';
-import { patternsForSearch } from './model/searchPatterns';
+import { FilterScope, SearchFilter, StoredSearchFilter, filterKey, scopeLabel } from './model/searchFilter';
+import { combineForSearch, patternsForSearch } from './model/searchPatterns';
+import { loadAllFilters } from './storage/filterRepository';
+import { hasPinnedFilters, pinnedFilters } from './storage/pinnedFilters';
 
 export interface FilterQuickPickItem extends vscode.QuickPickItem {
 	filter: StoredSearchFilter;
@@ -24,14 +26,25 @@ export function toFilterQuickPickItems(filters: StoredSearchFilter[]): FilterQui
 	}));
 }
 
-export async function runSearch(filter: StoredSearchFilter): Promise<void> {
-	const resolved = patternsForSearch(filter);
+// Fills the search path fields with patterns that are already resolved for the workspace.
+export async function searchWithPatterns(patterns: SearchFilter): Promise<void> {
 	await vscode.commands.executeCommand('workbench.action.findInFiles', {
-		filesToInclude: resolved.include,
-		filesToExclude: resolved.exclude,
+		filesToInclude: patterns.include,
+		filesToExclude: patterns.exclude,
 		triggerSearch: true,
 		showIncludesExcludes: true
 	});
+}
+
+// Searches with one filter plus every enabled pinned filter.
+export async function runSearch(filter: StoredSearchFilter): Promise<void> {
+	const pinned = hasPinnedFilters()
+		? pinnedFilters(await loadAllFilters()).filter(other => filterKey(other) !== filterKey(filter))
+		: [];
+	// The chosen filter is applied even when disabled, as before pins existed.
+	await searchWithPatterns(pinned.length > 0
+		? combineForSearch([{ ...filter, enabled: true }, ...pinned])
+		: patternsForSearch(filter));
 }
 
 export async function askFilterScope(workspaceFolder?: vscode.WorkspaceFolder, preferred: FilterScope = 'global'): Promise<FilterScope | undefined> {

@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { SearchFilter } from '../model/searchFilter';
+import { SearchFilter, filterKey } from '../model/searchFilter';
 import { createExtensionFixture } from './helpers/extensionFixture';
 
 function filter(name: string, include = 'src/**/*', exclude = ''): SearchFilter {
@@ -9,6 +9,7 @@ function filter(name: string, include = 'src/**/*', exclude = ''): SearchFilter 
 
 function editorFixture(options: Parameters<typeof createExtensionFixture>[0]) {
 	const fixture = createExtensionFixture(options);
+	fixture.load<typeof import('../storage/pinnedFilters')>('storage/pinnedFilters').initPinnedFilters(fixture.context);
 	fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
 	return fixture;
 }
@@ -39,7 +40,7 @@ suite('Filter editor', () => {
 		fixture.inputs.push('lib/**/*');
 		await fixture.runCommand('editFilter');
 		const menu = fixture.choices.at(-1)!.filter(item => item.action) as vscode.QuickPickItem[];
-		assert.deepStrictEqual(menu.map(item => Boolean(item.description?.endsWith('● modified'))), [false, true, false, false, false, false, false]);
+		assert.deepStrictEqual(menu.map(item => Boolean(item.description?.endsWith('● modified'))), [false, true, false, false, false, false, false, false]);
 		assert.strictEqual(menu.at(-1)!.label, '$(discard) Discard Changes');
 		assert.deepStrictEqual(fixture.updates, []);
 	});
@@ -65,9 +66,9 @@ suite('Filter editor', () => {
 
 	test('renames in place and keeps the disabled state', async () => {
 		const fixture = editorFixture({ settings: {
-			globalFilters: [filter('first'), filter('second'), filter('third')],
-			globalFiltersEnabled: { second: false }
-		} });
+				globalFilters: [filter('first'), filter('second'), filter('third')],
+				globalFiltersEnabled: { second: false }
+			} });
 		fixture.picks.push('second', 'name', 'save');
 		fixture.inputs.push('  renamed  ');
 		await fixture.runCommand('editFilter');
@@ -148,10 +149,10 @@ suite('Filter editor from the search list', () => {
 		const fixture = editorFixture({ settings: { globalFilters: [filter('target')] } });
 		await fixture.runCommand('selectAndSearch');
 		const [item] = fixture.picker.items;
-		assert.deepStrictEqual(item.buttons?.map(button => button.tooltip), ['Edit filter', 'Delete filter']);
+		assert.deepStrictEqual(item.buttons?.map(button => button.tooltip), ['Pin filter (add it to every search)', 'Edit filter', 'Delete filter']);
 		fixture.picks.push('include', 'saveAndSearch');
 		fixture.inputs.push('lib/**/*');
-		await fixture.picker.triggerItemButton!({ item, button: item.buttons![0] });
+		await fixture.picker.triggerItemButton!({ item, button: item.buttons![1] });
 		assert.strictEqual((fixture.settings.get('globalFilters') as SearchFilter[])[0].include, 'lib/**/*');
 		assert.strictEqual(fixture.executed.length, 1);
 		assert.strictEqual(fixture.executed[0].command, 'workbench.action.findInFiles');
@@ -168,9 +169,75 @@ suite('Filter editor from the search list', () => {
 		const [item] = fixture.picker.items;
 		fixture.picks.push('name', 'save');
 		fixture.inputs.push('renamed');
-		await fixture.picker.triggerItemButton!({ item, button: item.buttons![0] });
+		await fixture.picker.triggerItemButton!({ item, button: item.buttons![1] });
 		assert.strictEqual(fixture.picker.created, 2);
 		assert.deepStrictEqual(fixture.picker.items.map(entry => entry.filter?.name), ['renamed']);
 		assert.deepStrictEqual(fixture.executed, []);
+	});
+});
+
+suite('Pinning from the search list and the editor', () => {
+	test('renames and unpins an already pinned filter in the same save', async () => {
+		const original = filter('first');
+		const fixture = editorFixture({
+			settings: { globalFilters: [original] },
+			workspaceState: { pinnedFilterKeys: [filterKey(original)] }
+		});
+		try {
+			fixture.picks.push('pinned', 'name', 'saveAndSearch');
+			fixture.inputs.push('renamed');
+			const editor = fixture.load<typeof import('../filterEditor')>('filterEditor');
+			const result = await editor.editFilterInteractively(original);
+			assert.strictEqual(result.outcome, 'saveAndSearch');
+			assert.strictEqual(result.filter.name, 'renamed');
+			assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), []);
+			assert.deepStrictEqual((fixture.settings.get('globalFilters') as SearchFilter[]).map(entry => entry.name), ['renamed']);
+		} finally { fixture.dispose(); }
+	});
+
+	test('pins and unpins from the search list without closing it', async () => {
+		const fixture = editorFixture({ settings: { globalFilters: [filter('base', '', '**/dist/**'), filter('source', 'src/**/*')] } });
+		await fixture.runCommand('selectAndSearch');
+		const picker = fixture.picker as unknown as { placeholder: string };
+		let [base] = fixture.picker.items;
+		await fixture.picker.triggerItemButton!({ item: base, button: base.buttons![0] });
+		[base] = fixture.picker.items;
+		assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), [filterKey(filter('base'))]);
+		assert.strictEqual(base.buttons![0].tooltip, 'Unpin filter');
+		assert.strictEqual(base.label, '$(globe) base (Global)  $(pinned)');
+		assert.match(String(base.description), /^Pinned · /);
+		assert.strictEqual(picker.placeholder, 'Select a custom search filter to apply with 1 pinned filter');
+		assert.strictEqual(fixture.picker.created, 1);
+		assert.deepStrictEqual(fixture.updates, []);
+
+		await fixture.picker.triggerItemButton!({ item: base, button: base.buttons![0] });
+		assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), []);
+		assert.strictEqual(picker.placeholder, 'Select a custom search filter to apply');
+		assert.deepStrictEqual(fixture.executed, []);
+	});
+
+	test('toggles the pin in the editor and applies it only on save', async () => {
+		const fixture = editorFixture({ settings: { globalFilters: [filter('base', '', '**/dist/**')] } });
+		const editor = fixture.load<typeof import('../filterEditor')>('filterEditor');
+		const target = { ...filter('base', '', '**/dist/**'), enabled: true };
+
+		fixture.picks.push('pinned', 'discard');
+		assert.strictEqual((await editor.editFilterInteractively(target)).outcome, 'cancelled');
+		const menu = fixture.choices.at(-1)!;
+		assert.strictEqual(menu.find(item => item.action === 'pinned')!.description, 'Yes  ● modified');
+		assert.strictEqual(menu.at(-1)!.label, '$(discard) Discard Changes');
+		assert.strictEqual(fixture.workspaceState.get('pinnedFilterKeys'), undefined);
+
+		fixture.picks.push('pinned', 'name', 'save');
+		fixture.inputs.push('renamed');
+		assert.strictEqual((await editor.editFilterInteractively(target)).outcome, 'saved');
+		assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), [filterKey(filter('renamed'))]);
+		assert.deepStrictEqual((fixture.settings.get('globalFilters') as SearchFilter[]).map(entry => entry.name), ['renamed']);
+
+		const updates = fixture.updates.length;
+		fixture.picks.push('pinned', 'save');
+		assert.strictEqual((await editor.editFilterInteractively({ ...target, name: 'renamed' })).outcome, 'saved');
+		assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), []);
+		assert.strictEqual(fixture.updates.length, updates);
 	});
 });

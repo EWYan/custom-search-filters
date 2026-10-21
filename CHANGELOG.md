@@ -61,6 +61,8 @@ All notable changes to the "custom-search-filters" extension will be documented 
 
 - Add a persistent **Search Filters** panel with checkboxes, grouped scopes, a combined rule preview, explicit Apply, and Clear Selection.
 - Remember checked filters per workspace independently of enabled states; refresh on settings, project file, and workspace-root changes.
+- Pin filters from the **Search Filters** panel, **Select Filter and Search**, or the filter editor to add them to every search: Apply, **Select Filter and Search**, **Search Now**, and **Save and Search**. Pins are saved per workspace.
+- Highlight pinned filters with a colored pin and name in the panel and a pin icon in **Select Filter and Search**. The color is customizable through `customSearchFilters.pinnedForeground`.
 - Add an edit button to each entry in **Select Filter and Search**.
 - Replace the sequential prompts of **Edit Filter** with a filter editor: pick only the fields to change, see modified fields marked, validate names as they are typed, remove individual patterns from a checklist, toggle the enabled state, and save, save and search, or discard.
 - Add **Search Now**, **Edit Filter**, and **Undo** to the confirmation after adding folders or file types from the Explorer.
@@ -87,3 +89,5 @@ All notable changes to the "custom-search-filters" extension will be documented 
 - Keep brace groups and character classes intact when splitting or removing glob patterns.
 - Prevent an old Undo notification from overwriting later changes or resurrecting a deleted filter.
 - Qualify global include rules per root when combining them with project rules, preserving OR semantics in VS Code's search parser.
+- Preserve a single filter's include expression when adding exclusion-only filters, and retain extension shorthand such as `.ts` when combining include rules.
+- Clear checked state consistently when pinning through the panel, search list, or editor; unpinning leaves the filter unchecked.

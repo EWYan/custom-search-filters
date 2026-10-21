@@ -52,6 +52,7 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 	const inputs: Array<string | undefined> = [];
 	const inputBoxes: vscode.InputBoxOptions[] = [];
 	const executed: Array<{ command: string; args: unknown[] }> = [];
+	const decorations: vscode.FileDecorationProvider[] = [];
 	const folder: vscode.WorkspaceFolder = {
 		name: 'fixture', index: 0,
 		uri: vscode.Uri.file(path.join(os.tmpdir(), 'custom-search-filters-fixture'))
@@ -126,7 +127,8 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 	};
 	const api = {
 		Uri: vscode.Uri, FileType: vscode.FileType, FileSystemError: vscode.FileSystemError,
-		ConfigurationTarget: vscode.ConfigurationTarget, ThemeIcon: vscode.ThemeIcon, QuickPickItemKind: vscode.QuickPickItemKind,
+		ConfigurationTarget: vscode.ConfigurationTarget, ThemeIcon: vscode.ThemeIcon, ThemeColor: vscode.ThemeColor,
+		FileDecoration: vscode.FileDecoration, QuickPickItemKind: vscode.QuickPickItemKind,
 		EventEmitter: vscode.EventEmitter, TreeItem: vscode.TreeItem, TreeItemCheckboxState: vscode.TreeItemCheckboxState,
 		TreeItemCollapsibleState: vscode.TreeItemCollapsibleState, RelativePattern: vscode.RelativePattern,
 		workspace: {
@@ -165,6 +167,10 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 		},
 		window: {
 			createTreeView: (_id: string, treeOptions: vscode.TreeViewOptions<FilterNode>) => { tree.provider = treeOptions.treeDataProvider; return tree; },
+			registerFileDecorationProvider: (provider: vscode.FileDecorationProvider) => {
+				decorations.push(provider);
+				return { dispose: () => decorations.splice(decorations.indexOf(provider), 1) };
+			},
 			showInformationMessage: async (message: string) => {
 				messages.push(message);
 				return selection.info;
@@ -252,5 +258,5 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 		configurationChange.dispose(); workspaceChange.dispose(); checkboxChange.dispose();
 	};
 	return { settings, state, workspaceState, handlers, messages, choices, updates, diagnostics, workspaceWrites, picks, inputs, inputBoxes, executed, folder, picker, selection, context, load, runCommand,
-		tree, checkboxChange, configurationChange, workspaceChange, workspaceData, workspaceFolders, watchers, dispose };
+		tree, decorations, checkboxChange, configurationChange, workspaceChange, workspaceData, workspaceFolders, watchers, dispose };
 }

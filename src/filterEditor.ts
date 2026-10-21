@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { FilterPatternTarget, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, scopeLabel, splitPatterns } from './model/searchFilter';
 import { hasNameConflict, loadAllFilters, saveFilter } from './storage/filterRepository';
+import { isPinned, setPinned } from './storage/pinnedFilters';
 
-type EditorAction = 'name' | 'include' | 'exclude' | 'enabled' | 'save' | 'saveAndSearch' | 'discard';
+type EditorAction = 'name' | 'include' | 'exclude' | 'enabled' | 'pinned' | 'save' | 'saveAndSearch' | 'discard';
 
 interface EditorItem extends vscode.QuickPickItem {
 	action?: EditorAction;
@@ -38,9 +39,15 @@ function fieldDescription(value: string, changed: boolean): string {
 	return `${value || '(none)'}${changed ? '  ● modified' : ''}`;
 }
 
-function editorItems(original: SearchFilter, draft: SearchFilter): EditorItem[] {
+// Pins are stored per workspace rather than in the filter, so they are tracked beside the draft.
+interface PinState {
+	original: boolean;
+	draft: boolean;
+}
+
+function editorItems(original: SearchFilter, draft: SearchFilter, pin: PinState): EditorItem[] {
 	const changed = changedFields(original, draft);
-	const modified = hasChanges(original, draft);
+	const modified = hasChanges(original, draft) || pin.draft !== pin.original;
 	return [
 		{ label: '$(tag) Name', description: fieldDescription(draft.name, changed.name), action: 'name' },
 		{ label: '$(add) Include', description: fieldDescription(draft.include, changed.include), action: 'include' },
@@ -50,6 +57,12 @@ function editorItems(original: SearchFilter, draft: SearchFilter): EditorItem[] 
 			description: fieldDescription(isEnabled(draft) ? 'Yes' : 'No', changed.enabled),
 			detail: `Select to ${isEnabled(draft) ? 'hide this filter from' : 'show this filter in'} the search list`,
 			action: 'enabled'
+		},
+		{
+			label: pin.draft ? '$(pinned) Pinned' : '$(pin) Pinned',
+			description: fieldDescription(pin.draft ? 'Yes' : 'No', pin.draft !== pin.original),
+			detail: pin.draft ? 'Select to stop adding this filter to every search' : 'Select to add this filter to every search in this workspace',
+			action: 'pinned'
 		},
 		{ label: '', kind: vscode.QuickPickItemKind.Separator },
 		{ label: '$(check) Save', description: modified ? undefined : 'No changes', action: 'save' },
@@ -103,9 +116,11 @@ export async function editFilterInteractively(original: StoredSearchFilter): Pro
 	const title = `Edit Filter: ${original.name} (${scopeLabel(original)})`;
 	const scopeText = scope === 'workspace' ? 'project' : 'global';
 	const existingFilters = await loadAllFilters();
+	const pin: PinState = { original: isPinned(original), draft: isPinned(original) };
+	const isModified = () => hasChanges(original, draft) || pin.draft !== pin.original;
 
 	for (;;) {
-		const selected = await vscode.window.showQuickPick(editorItems(original, draft), {
+		const selected = await vscode.window.showQuickPick(editorItems(original, draft, pin), {
 			title,
 			placeHolder: 'Select a field to change, then save',
 			ignoreFocusOut: true
@@ -141,28 +156,37 @@ export async function editFilterInteractively(original: StoredSearchFilter): Pro
 			case 'enabled':
 				draft.enabled = isEnabled(draft) ? false : (isEnabled(original) ? original.enabled : true);
 				break;
+			case 'pinned':
+				pin.draft = !pin.draft;
+				break;
 			case 'save':
 			case 'saveAndSearch': {
 				const outcome = selected.action;
-				if (!hasChanges(original, draft)) {
+				if (!isModified()) {
 					if (outcome === 'save') {
 						vscode.window.showInformationMessage(`No changes made to filter '${original.name}'.`);
 						return { outcome: 'cancelled', filter: draft };
 					}
 					return { outcome, filter: draft };
 				}
-				if (hasNameConflict(await loadAllFilters(), draft.name, scope, workspaceFolder, original.name)) {
-					vscode.window.showErrorMessage(`A filter named '${draft.name}' already exists in this ${scopeText} scope.`);
-					break;
+				if (hasChanges(original, draft)) {
+					if (hasNameConflict(await loadAllFilters(), draft.name, scope, workspaceFolder, original.name)) {
+						vscode.window.showErrorMessage(`A filter named '${draft.name}' already exists in this ${scopeText} scope.`);
+						break;
+					}
+					// A rename moves an existing pin to the new name before the pin change below.
+					await saveFilter(draft, workspaceFolder, original.name);
 				}
-				await saveFilter(draft, workspaceFolder, original.name);
+				if (pin.draft !== pin.original) {
+					await setPinned(draft, pin.draft);
+				}
 				vscode.window.showInformationMessage(`Search filter '${draft.name}' saved successfully.`);
 				return { outcome: outcome === 'save' ? 'saved' : outcome, filter: draft };
 			}
 			case 'discard':
 				return { outcome: 'cancelled', filter: draft };
 			default: {
-				if (!hasChanges(original, draft)) {
+				if (!isModified()) {
 					return { outcome: 'cancelled', filter: draft };
 				}
 				const confirmed = await vscode.window.showWarningMessage(

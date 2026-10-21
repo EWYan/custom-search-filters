@@ -5,8 +5,11 @@ import { recoverLegacyFilters } from './migration';
 import { SearchFilter } from './model/searchFilter';
 import { FilterQuickPickItem, askFilterScope, runSearch, toFilterQuickPickItems } from './searchUi';
 import { deleteFilter, hasNameConflict, loadAllFilters, saveFilter } from './storage/filterRepository';
+import { hasPinnedFilters, isPinned, pinnedFilters, setPinned } from './storage/pinnedFilters';
 import { getWorkspaceFolderForUri } from './storage/workspaceFilters';
 
+const PIN_BUTTON: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('pin'), tooltip: 'Pin filter (add it to every search)' };
+const UNPIN_BUTTON: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('pinned'), tooltip: 'Unpin filter' };
 const EDIT_BUTTON: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('edit'), tooltip: 'Edit filter' };
 const DELETE_BUTTON: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('x'), tooltip: 'Delete filter' };
 
@@ -64,14 +67,24 @@ async function addFilter(): Promise<void> {
 
 async function selectAndSearch(): Promise<void> {
 	const quickPick = vscode.window.createQuickPick<FilterQuickPickItem>();
-	quickPick.placeholder = 'Select a custom search filter to apply';
 
 	const updateQuickPickItems = async () => {
-		const filters = (await loadAllFilters()).filter(filter => filter.enabled !== false);
-		quickPick.items = filters.map(filter => ({
-			...toFilterQuickPickItems([filter])[0],
-			buttons: [EDIT_BUTTON, DELETE_BUTTON]
-		}));
+		const allFilters = await loadAllFilters();
+		const pinned = hasPinnedFilters() ? pinnedFilters(allFilters).length : 0;
+		quickPick.placeholder = pinned > 0
+			? `Select a custom search filter to apply with ${pinned} pinned ${pinned === 1 ? 'filter' : 'filters'}`
+			: 'Select a custom search filter to apply';
+		const filters = allFilters.filter(filter => filter.enabled !== false);
+		quickPick.items = filters.map(filter => {
+			const item = toFilterQuickPickItems([filter])[0];
+			const pinnedFilter = isPinned(filter);
+			return {
+				...item,
+				label: pinnedFilter ? `${item.label}  $(pinned)` : item.label,
+				description: pinnedFilter ? `Pinned · ${item.description}` : item.description,
+				buttons: [pinnedFilter ? UNPIN_BUTTON : PIN_BUTTON, EDIT_BUTTON, DELETE_BUTTON]
+			};
+		});
 	};
 
 	await updateQuickPickItems();
@@ -82,6 +95,12 @@ async function selectAndSearch(): Promise<void> {
 	}
 
 	quickPick.onDidTriggerItemButton(async event => {
+		if (event.button === PIN_BUTTON || event.button === UNPIN_BUTTON) {
+			await setPinned(event.item.filter, event.button === PIN_BUTTON);
+			await updateQuickPickItems();
+			return;
+		}
+
 		if (event.button === EDIT_BUTTON) {
 			// Only one quick input can be visible, so close the list and reopen it after editing.
 			quickPick.dispose();

@@ -23,7 +23,8 @@ export function patternsForSearch(filter: StoredSearchFilter): SearchFilter {
 
 export function combineForSearch(filters: StoredSearchFilter[]): CombinedFilters {
 	const folders = vscode.workspace.workspaceFolders || [];
-	const resolved = filters.map(patternsForSearch);
+	const resolved = filters.filter(filter => filter.enabled !== false).map(patternsForSearch);
+	const includes = resolved.filter(filter => splitPatterns(filter.include).length > 0);
 	const isSearchPath = (pattern: string) => path.isAbsolute(pattern) || /^\.\.?([\\/]|$)/.test(pattern);
 	const namedRoots = usesWorkspaceNames();
 	if (!folders.length || (!namedRoots && !resolved.some(filter => splitPatterns(filter.include).some(isSearchPath)))) {
@@ -33,7 +34,9 @@ export function combineForSearch(filters: StoredSearchFilter[]): CombinedFilters
 	// includes per root so combining global and project rules remains an OR operation.
 	const expandGlobals = (value: string) => splitPatterns(value).flatMap(pattern => {
 		if (isSearchPath(pattern)) { return [pattern]; }
-		const anywhere = `**/${pattern.replace(/\\/g, '/').replace(/\/+$/, '')}`.replace(/\*\*\/\*\*/g, '**');
+		// The search box treats extension shorthand such as .ts as *.ts.
+		const glob = pattern.startsWith('.') ? `*${pattern}` : pattern;
+		const anywhere = `**/${glob.replace(/\\/g, '/').replace(/\/+$/, '')}`.replace(/\*\*\/\*\*/g, '**');
 		return folders.map(folder => `./${namedRoots ? folder.name + '/' : ''}${anywhere}`);
 	}).join(',');
 	const expanded = resolved.map(filter => {
@@ -43,6 +46,10 @@ export function combineForSearch(filters: StoredSearchFilter[]): CombinedFilters
 		return { ...filter, include: anchor(filter.include), exclude: anchor(filter.exclude) };
 	});
 	const combined = combineFilters(expanded);
+	// With only one include-bearing filter there is no include union to resolve.
+	// Preserve VS Code's path/glob intersection (e.g. ./src,**/*.ts), including
+	// when the other filters only add exclusions or are disabled.
+	if (includes.length === 1) { combined.include = includes[0].include; }
 	// Compare global excludes in the same coordinate system without changing how they
 	// apply to absolute search paths outside the workspace.
 	combined.conflicts = combineFilters(expanded.map(filter => filter.scope === 'workspace'

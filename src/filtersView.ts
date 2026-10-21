@@ -2,12 +2,16 @@ import * as vscode from 'vscode';
 import { editFilterInteractively } from './filterEditor';
 import { CombinedFilters, StoredSearchFilter, WorkspaceSearchFilter, filterKey } from './model/searchFilter';
 import { combineForSearch } from './model/searchPatterns';
-import { describeFilter, runSearch } from './searchUi';
+import { describeFilter, runSearch, searchWithPatterns } from './searchUi';
 import { onDidChangeFilters } from './storage/filterEvents';
 import { loadAllFilters } from './storage/filterRepository';
+import { isPinned, onDidChangePinnedFilters, pinnedFilters, setPinned } from './storage/pinnedFilters';
 
 const VIEW_ID = 'custom-search-filters.filters';
 const SELECTION_KEY = 'selectedFilterKeys';
+// Pinned rows carry a URI in this scheme so a file decoration can color their labels.
+const PINNED_SCHEME = 'custom-search-filters-pinned';
+const PINNED_COLOR = 'customSearchFilters.pinnedForeground';
 
 export type FilterNode =
 	| { kind: 'group'; id: string; label: string; filters: StoredSearchFilter[] }
@@ -58,6 +62,20 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 				const result = await editFilterInteractively(current);
 				await this.refresh();
 				if (result.outcome === 'saveAndSearch') { await runSearch(result.filter); }
+			}),
+			vscode.commands.registerCommand('custom-search-filters.pinFilter', (node: FilterNode) => this.pin(node, true)),
+			vscode.commands.registerCommand('custom-search-filters.unpinFilter', (node: FilterNode) => this.pin(node, false)),
+			onDidChangePinnedFilters(keys => {
+				if (this.disposed) { return; }
+				// Clear hidden selections for every entry point, even if a rapid unpin follows.
+				keys.forEach(key => this.selected.delete(key));
+				this.updateView();
+				void this.enqueue(() => this.persist()).catch(error => this.reportError(error));
+			}),
+			vscode.window.registerFileDecorationProvider({
+				provideFileDecoration: uri => uri.scheme === PINNED_SCHEME
+					? new vscode.FileDecoration(undefined, 'Pinned', new vscode.ThemeColor(PINNED_COLOR))
+					: undefined
 			})
 		);
 		this.watchWorkspaceFiles();
@@ -104,7 +122,7 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 
 	private async reload(): Promise<void> {
 		this.filters = await loadAllFilters();
-		const available = new Set(this.filters.filter(filter => filter.enabled !== false).map(filterKey));
+		const available = new Set(this.filters.filter(filter => filter.enabled !== false && !isPinned(filter)).map(filterKey));
 		for (const key of this.selected) {
 			if (!available.has(key)) { this.selected.delete(key); }
 		}
@@ -122,7 +140,7 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 			for (const [node, state] of items) {
 				if (node.kind !== 'filter') { continue; }
 				const key = filterKey(node.filter);
-				if (state === vscode.TreeItemCheckboxState.Checked && this.filters.some(filter => filterKey(filter) === key && filter.enabled !== false)) {
+				if (state === vscode.TreeItemCheckboxState.Checked && this.filters.some(filter => filterKey(filter) === key && filter.enabled !== false && !isPinned(filter))) {
 					this.selected.add(key);
 				} else { this.selected.delete(key); }
 			}
@@ -139,22 +157,41 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 		});
 	}
 
+	// Pinned filters are added to every search, so their checkboxes are replaced by the pin.
+	pin(node: FilterNode | undefined, pinned: boolean): Promise<void> {
+		return this.enqueue(async () => {
+			if (node?.kind !== 'filter') { return; }
+			await this.reload();
+			const key = filterKey(node.filter);
+			const current = this.filters.find(filter => filterKey(filter) === key);
+			if (!current) { return; }
+			await setPinned(current, pinned);
+			await this.persist();
+		});
+	}
+
 	apply(): Promise<void> {
 		return this.enqueue(async () => {
 			await this.reload();
-			await runSearch(this.combined());
+			await searchWithPatterns(this.combined());
 		});
 	}
 
 	private combined(): CombinedFilters {
-		return combineForSearch(this.filters.filter(filter => this.selected.has(filterKey(filter))));
+		const pinned = new Set(pinnedFilters(this.filters).map(filterKey));
+		return combineForSearch(this.filters.filter(filter => pinned.has(filterKey(filter)) || this.selected.has(filterKey(filter))));
 	}
 
 	private updateView(): void {
-		this.view.description = `${this.selected.size} selected`;
-		this.view.message = this.selected.size
-			? 'Includes match ANY pattern; excludes take precedence. Click Apply to search.'
-			: 'Check filters, then Apply. Applying an empty selection clears both path fields.';
+		const pinned = pinnedFilters(this.filters).length;
+		this.view.description = pinned ? `${this.selected.size} selected · ${pinned} pinned` : `${this.selected.size} selected`;
+		if (this.selected.size) {
+			this.view.message = 'Includes match ANY pattern; excludes take precedence. Click Apply to search.';
+		} else if (pinned) {
+			this.view.message = 'Pinned filters are added to every search. Check filters, then Apply.';
+		} else {
+			this.view.message = 'Check filters, then Apply. Applying an empty selection clears both path fields.';
+		}
 		this.changed.fire(undefined);
 	}
 
@@ -198,7 +235,17 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 		item.description = describeFilter(node.filter);
 		item.tooltip = describeFilter(node.filter);
 		item.contextValue = 'searchFilter';
-		if (node.filter.enabled !== false) {
+		if (isPinned(node.filter)) {
+			item.contextValue = 'searchFilter.pinned';
+			if (node.filter.enabled === false) {
+				item.iconPath = new vscode.ThemeIcon('pinned', new vscode.ThemeColor('disabledForeground'));
+				item.tooltip = `${item.tooltip}\nPinned, but not applied while disabled`;
+			} else {
+				item.iconPath = new vscode.ThemeIcon('pinned', new vscode.ThemeColor(PINNED_COLOR));
+				item.resourceUri = vscode.Uri.from({ scheme: PINNED_SCHEME, path: `/${encodeURIComponent(item.id)}` });
+				item.tooltip = `${item.tooltip}\nPinned: added to every search`;
+			}
+		} else if (node.filter.enabled !== false) {
 			item.checkboxState = this.selected.has(item.id) ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
 		}
 		return item;
