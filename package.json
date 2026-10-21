@@ -276,17 +276,17 @@
       "view/item/context": [
         {
           "command": "custom-search-filters.pinFilter",
-          "when": "view == custom-search-filters.filters && viewItem == searchFilter",
+          "when": "view == custom-search-filters.filters && (viewItem == searchFilter || viewItem == searchFilter.builtin)",
           "group": "inline@1"
         },
         {
           "command": "custom-search-filters.unpinFilter",
-          "when": "view == custom-search-filters.filters && viewItem == searchFilter.pinned",
+          "when": "view == custom-search-filters.filters && (viewItem == searchFilter.pinned || viewItem == searchFilter.builtin.pinned)",
           "group": "inline@1"
         },
         {
           "command": "custom-search-filters.editPanelFilter",
-          "when": "view == custom-search-filters.filters && viewItem =~ /^searchFilter/",
+          "when": "view == custom-search-filters.filters && (viewItem == searchFilter || viewItem == searchFilter.pinned)",
           "group": "inline@2"
         }
       ]

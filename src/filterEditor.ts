@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { FilterPatternTarget, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, scopeLabel, splitPatterns } from './model/searchFilter';
+import { FilterPatternTarget, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, isBuiltinFilter, scopeLabel, splitPatterns } from './model/searchFilter';
 import { hasNameConflict, loadAllFilters, saveFilter } from './storage/filterRepository';
 import { isPinned, setPinned } from './storage/pinnedFilters';
 
@@ -110,6 +110,10 @@ async function editPattern(draft: SearchFilter, target: FilterPatternTarget, tit
 
 // Edits a copy of the filter field by field; nothing is written until the user saves.
 export async function editFilterInteractively(original: StoredSearchFilter): Promise<FilterEditResult> {
+	if (isBuiltinFilter(original)) {
+		void vscode.window.showInformationMessage('Built-in filters are read-only.');
+		return { outcome: 'cancelled', filter: original };
+	}
 	const scope = original.scope || 'global';
 	const workspaceFolder = scope === 'workspace' ? (original as WorkspaceSearchFilter).workspaceFolder : undefined;
 	const draft: StoredSearchFilter = { ...original, scope };

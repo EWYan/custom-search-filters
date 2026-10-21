@@ -6,18 +6,32 @@ export function usesWorkspaceNames(): boolean {
 	return Boolean(vscode.workspace.workspaceFile) || (vscode.workspace.workspaceFolders?.length ?? 0) > 1;
 }
 
+function isSearchPath(pattern: string): boolean {
+	// VS Code expands the home directory before classifying paths and globs.
+	return path.isAbsolute(pattern) || /^(?:\.\.?|~)([\\/]|$)/.test(pattern);
+}
+
+function recursiveGlob(pattern: string): string {
+	// Plain search-box globs match at any depth; .ts is shorthand for *.ts.
+	const glob = pattern.startsWith('.') ? `*${pattern}` : pattern;
+	return `**/${glob.replace(/\\/g, '/').replace(/\/+$/, '')}`.replace(/\*\*\/\*\*/g, '**');
+}
+
+function qualifyProjectPattern(pattern: string, prefix: string): string {
+	if (/^\.([\\/]|$)/.test(pattern)) {
+		return `${prefix}${pattern.replace(/^\.([\\/]|$)/, '')}`;
+	}
+	return isSearchPath(pattern) ? pattern : `${prefix}${recursiveGlob(pattern)}`;
+}
+
 // Project definitions stay relative on disk. Resolve the current workspace alias only when searching.
 export function patternsForSearch(filter: StoredSearchFilter): SearchFilter {
 	if (filter.scope !== 'workspace' || !usesWorkspaceNames()) {
 		return { ...filter };
 	}
 	const folder = (filter as WorkspaceSearchFilter).workspaceFolder;
-	const qualify = (value: string) => splitPatterns(value).map(pattern => {
-		if (path.isAbsolute(pattern) || pattern.startsWith('../')) {
-			return pattern;
-		}
-		return `./${folder.name}/${pattern.replace(/^\.\//, '')}`;
-	}).join(',');
+	const qualify = (value: string) => splitPatterns(value)
+		.map(pattern => qualifyProjectPattern(pattern, `./${folder.name}/`)).join(',');
 	return { ...filter, include: qualify(filter.include), exclude: qualify(filter.exclude) };
 }
 
@@ -25,7 +39,6 @@ export function combineForSearch(filters: StoredSearchFilter[]): CombinedFilters
 	const folders = vscode.workspace.workspaceFolders || [];
 	const resolved = filters.filter(filter => filter.enabled !== false).map(patternsForSearch);
 	const includes = resolved.filter(filter => splitPatterns(filter.include).length > 0);
-	const isSearchPath = (pattern: string) => path.isAbsolute(pattern) || /^\.\.?([\\/]|$)/.test(pattern);
 	const namedRoots = usesWorkspaceNames();
 	if (!folders.length || (!namedRoots && !resolved.some(filter => splitPatterns(filter.include).some(isSearchPath)))) {
 		return combineFilters(resolved);
@@ -34,15 +47,12 @@ export function combineForSearch(filters: StoredSearchFilter[]): CombinedFilters
 	// includes per root so combining global and project rules remains an OR operation.
 	const expandGlobals = (value: string) => splitPatterns(value).flatMap(pattern => {
 		if (isSearchPath(pattern)) { return [pattern]; }
-		// The search box treats extension shorthand such as .ts as *.ts.
-		const glob = pattern.startsWith('.') ? `*${pattern}` : pattern;
-		const anywhere = `**/${glob.replace(/\\/g, '/').replace(/\/+$/, '')}`.replace(/\*\*\/\*\*/g, '**');
-		return folders.map(folder => `./${namedRoots ? folder.name + '/' : ''}${anywhere}`);
+		return folders.map(folder => `./${namedRoots ? folder.name + '/' : ''}${recursiveGlob(pattern)}`);
 	}).join(',');
 	const expanded = resolved.map(filter => {
 		if (filter.scope !== 'workspace') { return { ...filter, include: expandGlobals(filter.include) }; }
 		if (namedRoots) { return filter; }
-		const anchor = (value: string) => splitPatterns(value).map(pattern => isSearchPath(pattern) ? pattern : `./${pattern}`).join(',');
+		const anchor = (value: string) => splitPatterns(value).map(pattern => qualifyProjectPattern(pattern, './')).join(',');
 		return { ...filter, include: anchor(filter.include), exclude: anchor(filter.exclude) };
 	});
 	const combined = combineFilters(expanded);

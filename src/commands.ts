@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import { addFileTypes, addFolders } from './explorerCommands';
 import { editFilterInteractively } from './filterEditor';
 import { recoverLegacyFilters } from './migration';
-import { SearchFilter } from './model/searchFilter';
+import { SearchFilter, filterKey, isBuiltinFilter } from './model/searchFilter';
 import { FilterQuickPickItem, askFilterScope, runSearch, toFilterQuickPickItems } from './searchUi';
-import { deleteFilter, hasNameConflict, loadAllFilters, saveFilter } from './storage/filterRepository';
+import { deleteFilter, hasNameConflict, loadAllFilters, loadSearchFilters, saveFilter } from './storage/filterRepository';
 import { hasPinnedFilters, isPinned, pinnedFilters, setPinned } from './storage/pinnedFilters';
 import { getWorkspaceFolderForUri } from './storage/workspaceFilters';
 
@@ -69,7 +69,8 @@ async function selectAndSearch(): Promise<void> {
 	const quickPick = vscode.window.createQuickPick<FilterQuickPickItem>();
 
 	const updateQuickPickItems = async () => {
-		const allFilters = await loadAllFilters();
+		const allFilters = await loadSearchFilters();
+		const active = quickPick.activeItems[0]?.filter;
 		const pinned = hasPinnedFilters() ? pinnedFilters(allFilters).length : 0;
 		quickPick.placeholder = pinned > 0
 			? `Select a custom search filter to apply with ${pinned} pinned ${pinned === 1 ? 'filter' : 'filters'}`
@@ -82,9 +83,15 @@ async function selectAndSearch(): Promise<void> {
 				...item,
 				label: pinnedFilter ? `${item.label}  $(pinned)` : item.label,
 				description: pinnedFilter ? `Pinned · ${item.description}` : item.description,
-				buttons: [pinnedFilter ? UNPIN_BUTTON : PIN_BUTTON, EDIT_BUTTON, DELETE_BUTTON]
+				buttons: isBuiltinFilter(filter) ? [pinnedFilter ? UNPIN_BUTTON : PIN_BUTTON]
+					: [pinnedFilter ? UNPIN_BUTTON : PIN_BUTTON, EDIT_BUTTON, DELETE_BUTTON]
 			};
 		});
+		// Keep the built-in first, but initially focus a saved filter. Retain the user's
+		// focus when pinning or refreshing so the highlight does not jump back to the top.
+		const activeItem = (active && quickPick.items.find(item => filterKey(item.filter) === filterKey(active)))
+			|| quickPick.items.find(item => !isBuiltinFilter(item.filter)) || quickPick.items[0];
+		quickPick.activeItems = activeItem ? [activeItem] : [];
 	};
 
 	await updateQuickPickItems();
@@ -100,6 +107,7 @@ async function selectAndSearch(): Promise<void> {
 			await updateQuickPickItems();
 			return;
 		}
+		if (isBuiltinFilter(event.item.filter)) { return; }
 
 		if (event.button === EDIT_BUTTON) {
 			// Only one quick input can be visible, so close the list and reopen it after editing.

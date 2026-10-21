@@ -148,7 +148,7 @@ suite('Filter editor from the search list', () => {
 	test('opens the editor from the edit button and searches with the saved filter', async () => {
 		const fixture = editorFixture({ settings: { globalFilters: [filter('target')] } });
 		await fixture.runCommand('selectAndSearch');
-		const [item] = fixture.picker.items;
+		const item = fixture.picker.items.find(entry => entry.filter?.name === 'target')!;
 		assert.deepStrictEqual(item.buttons?.map(button => button.tooltip), ['Pin filter (add it to every search)', 'Edit filter', 'Delete filter']);
 		fixture.picks.push('include', 'saveAndSearch');
 		fixture.inputs.push('lib/**/*');
@@ -166,12 +166,12 @@ suite('Filter editor from the search list', () => {
 	test('reopens the search list after saving', async () => {
 		const fixture = editorFixture({ settings: { globalFilters: [filter('target')] } });
 		await fixture.runCommand('selectAndSearch');
-		const [item] = fixture.picker.items;
+		const item = fixture.picker.items.find(entry => entry.filter?.name === 'target')!;
 		fixture.picks.push('name', 'save');
 		fixture.inputs.push('renamed');
 		await fixture.picker.triggerItemButton!({ item, button: item.buttons![1] });
 		assert.strictEqual(fixture.picker.created, 2);
-		assert.deepStrictEqual(fixture.picker.items.map(entry => entry.filter?.name), ['renamed']);
+		assert.deepStrictEqual(fixture.picker.items.map(entry => entry.filter?.name), ['All Workspace Files', 'renamed']);
 		assert.deepStrictEqual(fixture.executed, []);
 	});
 });
@@ -199,9 +199,9 @@ suite('Pinning from the search list and the editor', () => {
 		const fixture = editorFixture({ settings: { globalFilters: [filter('base', '', '**/dist/**'), filter('source', 'src/**/*')] } });
 		await fixture.runCommand('selectAndSearch');
 		const picker = fixture.picker as unknown as { placeholder: string };
-		let [base] = fixture.picker.items;
+		let base = fixture.picker.items.find(entry => entry.filter?.name === 'base')!;
 		await fixture.picker.triggerItemButton!({ item: base, button: base.buttons![0] });
-		[base] = fixture.picker.items;
+		base = fixture.picker.items.find(entry => entry.filter?.name === 'base')!;
 		assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), [filterKey(filter('base'))]);
 		assert.strictEqual(base.buttons![0].tooltip, 'Unpin filter');
 		assert.strictEqual(base.label, '$(globe) base (Global)  $(pinned)');

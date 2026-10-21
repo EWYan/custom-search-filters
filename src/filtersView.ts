@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { editFilterInteractively } from './filterEditor';
-import { CombinedFilters, StoredSearchFilter, WorkspaceSearchFilter, filterKey } from './model/searchFilter';
+import { CombinedFilters, StoredSearchFilter, WorkspaceSearchFilter, filterKey, isBuiltinFilter } from './model/searchFilter';
 import { combineForSearch } from './model/searchPatterns';
 import { describeFilter, runSearch, searchWithPatterns } from './searchUi';
 import { onDidChangeFilters } from './storage/filterEvents';
-import { loadAllFilters } from './storage/filterRepository';
+import { loadAllFilters, loadSearchFilters } from './storage/filterRepository';
 import { isPinned, onDidChangePinnedFilters, pinnedFilters, setPinned } from './storage/pinnedFilters';
 
 const VIEW_ID = 'custom-search-filters.filters';
@@ -56,7 +56,7 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 			vscode.commands.registerCommand('custom-search-filters.clearFilterSelection', () => this.clear()),
 			vscode.commands.registerCommand('custom-search-filters.refreshFilters', () => this.refresh()),
 			vscode.commands.registerCommand('custom-search-filters.editPanelFilter', async (node: FilterNode) => {
-				if (node?.kind !== 'filter') { return; }
+				if (node?.kind !== 'filter' || isBuiltinFilter(node.filter)) { return; }
 				const current = (await loadAllFilters()).find(filter => filterKey(filter) === filterKey(node.filter));
 				if (!current) { await this.refresh(); return; }
 				const result = await editFilterInteractively(current);
@@ -98,7 +98,7 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 		// Coalesce the definition/enabled writes and let repository rename events transfer the selection first.
 		this.refreshTimer = setTimeout(() => {
 			this.refreshTimer = undefined;
-			void this.refresh().catch(error => this.reportError(error));
+			void this.refresh();
 		}, 100);
 	}
 
@@ -121,7 +121,13 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 	}
 
 	private async reload(): Promise<void> {
-		this.filters = await loadAllFilters();
+		try {
+			// Replace the snapshot only after every project file has loaded successfully.
+			this.filters = await loadSearchFilters();
+		} catch (error) {
+			this.view.message = 'Could not load project filters. Previous filters and selections are retained. Fix the project file and refresh.';
+			throw error;
+		}
 		const available = new Set(this.filters.filter(filter => filter.enabled !== false && !isPinned(filter)).map(filterKey));
 		for (const key of this.selected) {
 			if (!available.has(key)) { this.selected.delete(key); }
@@ -131,7 +137,8 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 	}
 
 	refresh(): Promise<void> {
-		return this.enqueue(() => this.reload());
+		// Keep activation and file watching alive so fixing an invalid file can recover.
+		return this.enqueue(() => this.reload()).catch(error => this.reportError(error));
 	}
 
 	setChecked(items: readonly [FilterNode, vscode.TreeItemCheckboxState][]): Promise<void> {
@@ -230,13 +237,18 @@ export class FiltersView implements vscode.TreeDataProvider<FilterNode>, vscode.
 			item.iconPath = new vscode.ThemeIcon(node.warning ? 'warning' : 'preview');
 			return item;
 		}
+		const builtin = isBuiltinFilter(node.filter);
 		const item = new vscode.TreeItem(node.filter.name);
 		item.id = filterKey(node.filter);
-		item.description = describeFilter(node.filter);
+		item.description = builtin ? 'Built-in' : describeFilter(node.filter);
 		item.tooltip = describeFilter(node.filter);
-		item.contextValue = 'searchFilter';
+		item.contextValue = builtin ? 'searchFilter.builtin' : 'searchFilter';
+		if (builtin) {
+			item.iconPath = new vscode.ThemeIcon('globe');
+			item.tooltip += '\nBuilt-in, read-only. Includes all workspace files; other filters\' excludes still apply.';
+		}
 		if (isPinned(node.filter)) {
-			item.contextValue = 'searchFilter.pinned';
+			item.contextValue += '.pinned';
 			if (node.filter.enabled === false) {
 				item.iconPath = new vscode.ThemeIcon('pinned', new vscode.ThemeColor('disabledForeground'));
 				item.tooltip = `${item.tooltip}\nPinned, but not applied while disabled`;

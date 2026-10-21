@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { FilterScope, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, filterKey } from '../model/searchFilter';
+import { ALL_WORKSPACE_FILES } from '../model/builtinFilters';
+import { FilterScope, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, filterKey, isBuiltinFilter } from '../model/searchFilter';
 import { notifyFilterChange } from './filterEvents';
 import { loadGlobalFilters, saveGlobalFilters } from './globalFilters';
 import { getWorkspaceFolderForUri, loadAllWorkspaceFilters, loadWorkspaceFilters, saveWorkspaceFilters } from './workspaceFilters';
@@ -11,6 +12,11 @@ export async function loadAllFilters(): Promise<StoredSearchFilter[]> {
 	];
 }
 
+// Search choices also include built-ins. Editing and persistence use stored filters only.
+export async function loadSearchFilters(): Promise<StoredSearchFilter[]> {
+	return [ALL_WORKSPACE_FILES, ...await loadAllFilters()];
+}
+
 export function hasNameConflict(
 	filters: StoredSearchFilter[],
 	name: string,
@@ -19,6 +25,7 @@ export function hasNameConflict(
 	originalName?: string
 ): boolean {
 	return filters.some(existing => {
+		if (isBuiltinFilter(existing)) { return false; }
 		if (existing.name !== name || existing.name === originalName || existing.scope !== scope) {
 			return false;
 		}
@@ -31,6 +38,7 @@ export function hasNameConflict(
 
 // Pass originalName when renaming so the filter keeps its position and is written once.
 export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: vscode.WorkspaceFolder, originalName?: string): Promise<void> {
+	if (isBuiltinFilter(filter)) { throw new Error('Built-in filters are read-only.'); }
 	const scope = filter.scope || 'global';
 	const nameToReplace = originalName ?? filter.name;
 
@@ -71,6 +79,7 @@ export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: v
 }
 
 export async function deleteFilter(filter: StoredSearchFilter): Promise<void> {
+	if (isBuiltinFilter(filter)) { throw new Error('Built-in filters are read-only.'); }
 	if (filter.scope === 'workspace') {
 		const workspaceFilter = filter as WorkspaceSearchFilter;
 		const filters = await loadWorkspaceFilters(workspaceFilter.workspaceFolder);

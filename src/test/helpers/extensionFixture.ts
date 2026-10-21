@@ -62,6 +62,7 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 		uri: vscode.Uri.file(path.join(os.tmpdir(), `custom-search-filters-fixture-${name}`))
 	}))];
 	const workspaceData = new Map(workspaceFolders.map((entry, index) => [entry.uri.toString(), index === 0 ? options.workspaceFilters || [] : options.extraWorkspaceFilters || []]));
+	const workspaceReads = new Map<string, string | Error>();
 	const configurationChange = new vscode.EventEmitter<vscode.ConfigurationChangeEvent>();
 	const workspaceChange = new vscode.EventEmitter<vscode.WorkspaceFoldersChangeEvent>();
 	const checkboxChange = new vscode.EventEmitter<vscode.TreeCheckboxChangeEvent<FilterNode>>();
@@ -76,6 +77,7 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 	const picker = {
 		title: undefined as string | undefined,
 		items: [] as PickerItem[],
+		activeItems: [] as PickerItem[],
 		selectedItems: [] as PickerItem[],
 		created: 0,
 		triggerItemButton: undefined as ButtonHandler | undefined,
@@ -153,6 +155,9 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 				stat: async () => ({ type: options.fileType ?? vscode.FileType.Directory }),
 				readFile: async (uri: vscode.Uri) => {
 					const root = workspaceFolders.find(entry => uri.toString().startsWith(entry.uri.toString() + '/'));
+					const override = workspaceReads.get(root?.uri.toString() || '');
+					if (override instanceof Error) { throw override; }
+					if (typeof override === 'string') { return Buffer.from(override); }
 					return Buffer.from(JSON.stringify(workspaceData.get(root?.uri.toString() || '') || []));
 				},
 				createDirectory: async () => {},
@@ -258,5 +263,5 @@ export function createExtensionFixture(options: FixtureOptions = {}) {
 		configurationChange.dispose(); workspaceChange.dispose(); checkboxChange.dispose();
 	};
 	return { settings, state, workspaceState, handlers, messages, choices, updates, diagnostics, workspaceWrites, picks, inputs, inputBoxes, executed, folder, picker, selection, context, load, runCommand,
-		tree, decorations, checkboxChange, configurationChange, workspaceChange, workspaceData, workspaceFolders, watchers, dispose };
+		tree, decorations, checkboxChange, configurationChange, workspaceChange, workspaceData, workspaceReads, workspaceFolders, watchers, dispose };
 }

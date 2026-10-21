@@ -105,12 +105,14 @@ async function fileTypePatternsFromUris(uris: vscode.Uri[]): Promise<string[]> {
 }
 
 function patternsForScope(kind: PatternKind, patterns: string[], folder?: vscode.WorkspaceFolder): string[] | undefined {
-	if (kind !== 'folder' || !folder || !usesWorkspaceNames()) {
+	if (kind !== 'folder' || !folder) {
 		return patterns;
 	}
+	// Explorer selections identify a particular folder, not every folder with that name.
+	if (!usesWorkspaceNames()) { return patterns.map(pattern => `./${pattern}`); }
 	const prefix = `./${folder.name}/`;
 	return patterns.every(pattern => pattern.startsWith(prefix))
-		? patterns.map(pattern => pattern.slice(prefix.length)) : undefined;
+		? patterns.map(pattern => `./${pattern.slice(prefix.length)}`) : undefined;
 }
 
 function targetItems(filters: StoredSearchFilter[], kind: PatternKind, target: FilterPatternTarget, patterns: string[]): TargetItem[] {

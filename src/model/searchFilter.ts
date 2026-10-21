@@ -9,6 +9,8 @@ export interface SearchFilter {
 	exclude: string;
 	scope?: FilterScope;
 	enabled?: boolean;
+	// Runtime identity only: normalization never reads this from user configuration.
+	readonly builtinId?: 'all-workspace-files';
 }
 
 export interface WorkspaceSearchFilter extends SearchFilter {
@@ -17,6 +19,10 @@ export interface WorkspaceSearchFilter extends SearchFilter {
 }
 
 export type StoredSearchFilter = SearchFilter | WorkspaceSearchFilter;
+
+export function isBuiltinFilter(filter: SearchFilter): boolean {
+	return filter.builtinId === 'all-workspace-files';
+}
 
 export function normalizeFilter(value: unknown, scope: FilterScope): SearchFilter {
 	const filter = value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -64,6 +70,7 @@ export function splitPatterns(pattern: string | undefined | null): string[] {
 }
 
 export function filterKey(filter: StoredSearchFilter): string {
+	if (isBuiltinFilter(filter)) { return JSON.stringify(['builtin', filter.builtinId]); }
 	return JSON.stringify([
 		filter.scope || 'global',
 		filter.scope === 'workspace' ? (filter as WorkspaceSearchFilter).workspaceFolder.uri.toString() : '',

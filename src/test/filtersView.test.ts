@@ -1,15 +1,16 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { FiltersView, FilterNode } from '../filtersView';
-import { SearchFilter, combineFilters, filterKey, splitPatterns } from '../model/searchFilter';
+import { SearchFilter, combineFilters, filterKey, isBuiltinFilter, splitPatterns } from '../model/searchFilter';
 import { createExtensionFixture } from './helpers/extensionFixture';
 
 function filter(name: string, include = 'src/**/*', exclude = ''): SearchFilter {
 	return { name, include, exclude, scope: 'global' };
 }
 
-function leaves(panel: FiltersView): Extract<FilterNode, { kind: 'filter' }>[] {
-	return panel.getChildren().flatMap(node => panel.getChildren(node)).filter((node): node is Extract<FilterNode, { kind: 'filter' }> => node.kind === 'filter');
+function userLeaves(panel: FiltersView): Extract<FilterNode, { kind: 'filter' }>[] {
+	// These regressions exercise user-defined selections; built-ins have their own suite.
+	return panel.getChildren().flatMap(node => panel.getChildren(node)).filter((node): node is Extract<FilterNode, { kind: 'filter' }> => node.kind === 'filter' && !isBuiltinFilter(node.filter));
 }
 
 async function withPanel(options: Parameters<typeof createExtensionFixture>[0], run: (fixture: ReturnType<typeof createExtensionFixture>, panel: FiltersView) => Promise<void>) {
@@ -107,23 +108,23 @@ suite('Combining filter rules', () => {
 suite('Persistent Filters panel', () => {
 	test('edits a checked project filter from the panel and retains its scope when searching', async () => {
 		await withPanel({ workspaceFilters: [filter('project')], extraWorkspaceFolderNames: ['other'] }, async (fixture, panel) => {
-			await panel.setChecked([[leaves(panel)[0], vscode.TreeItemCheckboxState.Checked]]);
+			await panel.setChecked([[userLeaves(panel)[0], vscode.TreeItemCheckboxState.Checked]]);
 			fixture.picks.push('name', 'save');
 			fixture.inputs.push('renamed');
-			await fixture.runCommand('editPanelFilter', leaves(panel)[0]);
-			const renamed = leaves(panel)[0];
+			await fixture.runCommand('editPanelFilter', userLeaves(panel)[0]);
+			const renamed = userLeaves(panel)[0];
 			assert.strictEqual(renamed.filter.name, 'renamed');
 			assert.strictEqual(panel.getTreeItem(renamed).checkboxState, vscode.TreeItemCheckboxState.Checked);
 			fixture.picks.push('include', 'saveAndSearch');
 			fixture.inputs.push('lib/**/*');
 			await fixture.runCommand('editPanelFilter', renamed);
-			assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/lib/**/*');
+			assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/**/lib/**/*');
 		});
 	});
 
 	test('checkboxes persist independently and only Apply invokes search', async () => {
 		await withPanel({ settings: { globalFilters: [filter('source'), filter('logs', '', '**/*.log')] } }, async (fixture, panel) => {
-			const nodes = leaves(panel);
+			const nodes = userLeaves(panel);
 			fixture.checkboxChange.fire({ items: nodes.map(node => [node, vscode.TreeItemCheckboxState.Checked]) });
 			await panel.refresh();
 			assert.ok(nodes.every(node => panel.getTreeItem(node).checkboxState === vscode.TreeItemCheckboxState.Checked));
@@ -147,7 +148,7 @@ suite('Persistent Filters panel', () => {
 			settings: { globalFilters: [active, hidden], globalFiltersEnabled: { hidden: false } },
 			workspaceState: { selectedFilterKeys: [filterKey(active), filterKey(hidden), 'missing'] }
 		}, async (fixture, panel) => {
-			const [shown, disabled] = leaves(panel);
+			const [shown, disabled] = userLeaves(panel);
 			assert.strictEqual(panel.getTreeItem(shown).checkboxState, vscode.TreeItemCheckboxState.Checked);
 			assert.strictEqual(panel.getTreeItem(disabled).checkboxState, undefined);
 			assert.deepStrictEqual(fixture.workspaceState.get('selectedFilterKeys'), [filterKey(active)]);
@@ -158,7 +159,7 @@ suite('Persistent Filters panel', () => {
 
 	test('clear selection waits for Apply before clearing the search path fields', async () => {
 		await withPanel({ settings: { globalFilters: [filter('source')] } }, async (fixture, panel) => {
-			await panel.setChecked([[leaves(panel)[0], vscode.TreeItemCheckboxState.Checked]]);
+			await panel.setChecked([[userLeaves(panel)[0], vscode.TreeItemCheckboxState.Checked]]);
 			await fixture.runCommand('clearFilterSelection');
 			assert.strictEqual(fixture.executed.length, 0);
 			await panel.apply();
@@ -171,22 +172,22 @@ suite('Persistent Filters panel', () => {
 			settings: { globalFilters: [filter('same', '**/*.ts')] }, workspaceFilters: [filter('same')],
 			extraWorkspaceFolderNames: ['other'], extraWorkspaceFilters: [filter('same', 'lib/**/*')]
 		}, async (fixture, panel) => {
-			const nodes = leaves(panel);
+			const nodes = userLeaves(panel);
 			assert.strictEqual(new Set(nodes.map(node => panel.getTreeItem(node).id)).size, 3);
 			await panel.setChecked(nodes.map(node => [node, vscode.TreeItemCheckboxState.Checked]));
 			await panel.apply();
-			assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/**/*.ts,./other/**/*.ts,./fixture/src/**/*,./other/lib/**/*');
+			assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/**/*.ts,./other/**/*.ts,./fixture/**/src/**/*,./other/**/lib/**/*');
 			assert.deepStrictEqual(fixture.workspaceWrites, []);
 		});
 	});
 
 	test('retains a selection on rename, then removes disabled and deleted selections', async () => {
 		await withPanel({ settings: { globalFilters: [filter('first'), filter('second')] } }, async (fixture, panel) => {
-			await panel.setChecked(leaves(panel).map(node => [node, vscode.TreeItemCheckboxState.Checked]));
+			await panel.setChecked(userLeaves(panel).map(node => [node, vscode.TreeItemCheckboxState.Checked]));
 			const repository = fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository');
 			await repository.saveFilter(filter('renamed'), undefined, 'first');
 			await panel.refresh();
-			assert.strictEqual(panel.getTreeItem(leaves(panel)[0]).checkboxState, vscode.TreeItemCheckboxState.Checked);
+			assert.strictEqual(panel.getTreeItem(userLeaves(panel)[0]).checkboxState, vscode.TreeItemCheckboxState.Checked);
 			assert.ok((fixture.workspaceState.get('selectedFilterKeys') as string[]).includes(filterKey(filter('renamed'))));
 			await repository.saveFilter({ ...filter('renamed'), enabled: false });
 			await repository.deleteFilter(filter('second'));
@@ -197,31 +198,89 @@ suite('Persistent Filters panel', () => {
 
 	test('updates on external settings and workspace file changes', async () => {
 		await withPanel({ settings: { globalFilters: [filter('global')] }, workspaceFilters: [filter('project')] }, async (fixture, panel) => {
-			await panel.setChecked(leaves(panel).map(node => [node, vscode.TreeItemCheckboxState.Checked]));
+			await panel.setChecked(userLeaves(panel).map(node => [node, vscode.TreeItemCheckboxState.Checked]));
 			fixture.settings.set('globalFilters', [filter('global', 'changed/**/*')]);
 			await refreshed(panel, () => fixture.configurationChange.fire({ affectsConfiguration: section => section === 'custom-search-filters' }));
-			assert.strictEqual(leaves(panel)[0].filter.include, 'changed/**/*');
+			assert.strictEqual(userLeaves(panel)[0].filter.include, 'changed/**/*');
 			fixture.workspaceData.set(fixture.folder.uri.toString(), []);
 			await refreshed(panel, () => fixture.watchers[0].change.fire(vscode.Uri.joinPath(fixture.folder.uri, '.vscode/custom-search-filters.json')));
-			assert.deepStrictEqual(leaves(panel).map(node => node.filter.name), ['global']);
+			assert.deepStrictEqual(userLeaves(panel).map(node => node.filter.name), ['global']);
 			assert.strictEqual((fixture.workspaceState.get('selectedFilterKeys') as string[]).length, 1);
 		});
 	});
 
 	test('removes selections for closed roots and replaces file watchers', async () => {
 		await withPanel({ workspaceFilters: [filter('local')], extraWorkspaceFolderNames: ['other'], extraWorkspaceFilters: [filter('other')] }, async (fixture, panel) => {
-			await panel.setChecked(leaves(panel).map(node => [node, vscode.TreeItemCheckboxState.Checked]));
+			await panel.setChecked(userLeaves(panel).map(node => [node, vscode.TreeItemCheckboxState.Checked]));
 			const removed = fixture.workspaceFolders.splice(1, 1);
 			await refreshed(panel, () => fixture.workspaceChange.fire({ added: [], removed }));
-			assert.deepStrictEqual(leaves(panel).map(node => node.filter.name), ['local']);
+			assert.deepStrictEqual(userLeaves(panel).map(node => node.filter.name), ['local']);
 			assert.ok(fixture.watchers[0].disposed && fixture.watchers[1].disposed);
 			assert.strictEqual((fixture.workspaceState.get('selectedFilterKeys') as string[]).length, 1);
 		});
 	});
 
+	for (const [label, failure] of [
+		['invalid JSON', '['], ['non-array JSON', '{}'], ['unreadable file', vscode.FileSystemError.NoPermissions()]
+	] as const) {
+		test(`retains the last complete snapshot and selections through ${label}, then recovers`, async () => {
+			await withPanel({
+				settings: { globalFilters: [filter('global')] }, workspaceFilters: [filter('project')],
+				extraWorkspaceFolderNames: ['other'], extraWorkspaceFilters: [filter('other')]
+			}, async (fixture, panel) => {
+				await panel.setChecked(userLeaves(panel).map(node => [node, vscode.TreeItemCheckboxState.Checked]));
+				const keys = fixture.workspaceState.get('selectedFilterKeys');
+				fixture.workspaceReads.set(fixture.folder.uri.toString(), failure);
+				fixture.workspaceData.set(fixture.workspaceFolders[1].uri.toString(), []);
+				await panel.refresh();
+				assert.deepStrictEqual(fixture.workspaceState.get('selectedFilterKeys'), keys);
+				assert.deepStrictEqual(userLeaves(panel).map(node => node.filter.name), ['global', 'project', 'other']);
+				assert.ok(userLeaves(panel).every(node => panel.getTreeItem(node).checkboxState === vscode.TreeItemCheckboxState.Checked));
+				assert.match(fixture.tree.message, /Previous filters and selections are retained/);
+				assert.match(fixture.messages.at(-1)!, /Cannot load project filters.*custom-search-filters\.json/);
+				await assert.rejects(panel.apply(), /Cannot load project filters/);
+				assert.deepStrictEqual(fixture.executed, []);
+				fixture.workspaceReads.clear();
+				await refreshed(panel, () => fixture.watchers[0].change.fire(fixture.folder.uri));
+				assert.deepStrictEqual(userLeaves(panel).map(node => node.filter.name), ['global', 'project']);
+				assert.ok(userLeaves(panel).every(node => panel.getTreeItem(node).checkboxState === vscode.TreeItemCheckboxState.Checked));
+				assert.strictEqual((fixture.workspaceState.get('selectedFilterKeys') as string[]).length, 2);
+				await panel.apply();
+				assert.strictEqual(fixture.executed.length, 1);
+			});
+		});
+	}
+
+	test('keeps persisted selections and activation alive when a project file starts invalid', async () => {
+		const fixture = createExtensionFixture({ workspaceFilters: [filter('project')] });
+		try {
+			const key = filterKey({ ...filter('project'), scope: 'workspace', workspaceFolder: fixture.folder });
+			fixture.workspaceState.set('selectedFilterKeys', [key]);
+			fixture.workspaceReads.set(fixture.folder.uri.toString(), '[');
+			await fixture.load<typeof import('../extension')>('extension').activate(fixture.context);
+			assert.deepStrictEqual(fixture.workspaceState.get('selectedFilterKeys'), [key]);
+			assert.ok(fixture.handlers.has('custom-search-filters.refreshFilters'));
+			fixture.workspaceReads.clear();
+			await fixture.runCommand('refreshFilters');
+			const panel = fixture.tree.provider as FiltersView;
+			assert.strictEqual(panel.getTreeItem(userLeaves(panel)[0]).checkboxState, vscode.TreeItemCheckboxState.Checked);
+		} finally { fixture.dispose(); }
+	});
+
+	test('removes a selection when the project file is actually deleted', async () => {
+		await withPanel({ workspaceFilters: [filter('project')] }, async (fixture, panel) => {
+			await panel.setChecked([[userLeaves(panel)[0], vscode.TreeItemCheckboxState.Checked]]);
+			fixture.workspaceReads.set(fixture.folder.uri.toString(), vscode.FileSystemError.FileNotFound());
+			await panel.refresh();
+			assert.deepStrictEqual(userLeaves(panel), []);
+			assert.deepStrictEqual(fixture.workspaceState.get('selectedFilterKeys'), []);
+			assert.deepStrictEqual(fixture.messages, []);
+		});
+	});
+
 	test('serializes rapid changes and shows include/exclude overlap in the preview', async () => {
 		await withPanel({ settings: { globalFilters: [filter('source'), filter('exclude', '', 'src/**/*')] } }, async (fixture, panel) => {
-			const nodes = leaves(panel);
+			const nodes = userLeaves(panel);
 			await Promise.all(nodes.map(node => panel.setChecked([[node, vscode.TreeItemCheckboxState.Checked]])));
 			const warning = panel.getChildren().find(node => node.kind === 'preview' && node.warning);
 			assert.ok(warning);
@@ -254,14 +313,14 @@ suite('Pinned filters', () => {
 	for (const entryPoint of ['panel', 'search list', 'editor']) {
 		test(`clears checked state when pinning through the ${entryPoint}`, async () => {
 			await withPanel({ settings: { globalFilters: [filter('source')] } }, async (fixture, panel) => {
-				const [source] = leaves(panel);
+				const [source] = userLeaves(panel);
 				await panel.setChecked([[source, vscode.TreeItemCheckboxState.Checked]]);
 				if (entryPoint === 'panel') {
 					await panel.pin(source, true);
 				} else if (entryPoint === 'search list') {
 					fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
 					await fixture.runCommand('selectAndSearch');
-					const item = fixture.picker.items[0];
+					const item = fixture.picker.items.find(entry => entry.filter?.name === 'source')!;
 					await fixture.picker.triggerItemButton!({ item, button: item.buttons![0] });
 				} else {
 					fixture.picks.push('pinned', 'save');
@@ -284,7 +343,7 @@ suite('Pinned filters', () => {
 
 	test('clears hidden selections even when pin and unpin happen before persistence finishes', async () => {
 		await withPanel({ settings: { globalFilters: [filter('source')] } }, async (fixture, panel) => {
-			const [source] = leaves(panel);
+			const [source] = userLeaves(panel);
 			await panel.setChecked([[source, vscode.TreeItemCheckboxState.Checked]]);
 			const pins = fixture.load<typeof import('../storage/pinnedFilters')>('storage/pinnedFilters');
 			await Promise.all([pins.setPinned(source.filter, true), pins.setPinned(source.filter, false)]);
@@ -304,7 +363,7 @@ suite('Pinned filters', () => {
 		}, async (fixture, panel) => {
 			assert.strictEqual(fixture.tree.description, '0 selected · 1 pinned');
 			assert.deepStrictEqual(fixture.workspaceState.get('selectedFilterKeys'), []);
-			assert.ok(leaves(panel).every(node => panel.getTreeItem(node).contextValue === 'searchFilter.pinned'));
+			assert.ok(userLeaves(panel).every(node => panel.getTreeItem(node).contextValue === 'searchFilter.pinned'));
 			assert.deepStrictEqual(searches(fixture), []);
 			await panel.apply();
 			assert.deepStrictEqual(searches(fixture), [{ include: 'src/**/*', exclude: '' }]);
@@ -313,7 +372,7 @@ suite('Pinned filters', () => {
 
 	test('keeps a rooted include expression intact in both single-filter searches and panel previews', async () => {
 		await withPanel({ settings: { globalFilters: [filter('source', './src,**/*.ts'), filter('build', '', '**/dist/**')] } }, async (fixture, panel) => {
-			const [source, build] = leaves(panel);
+			const [source, build] = userLeaves(panel);
 			const ui = fixture.load<typeof import('../searchUi')>('searchUi');
 			await ui.runSearch(source.filter);
 			await panel.pin(build, true);
@@ -333,10 +392,10 @@ suite('Pinned filters', () => {
 
 	test('pins per workspace without writing filters and adds pinned filters to Apply', async () => {
 		await withPanel({ settings: { globalFilters: [filter('base', '', '**/dist/**'), filter('source')] } }, async (fixture, panel) => {
-			const [base, source] = leaves(panel);
+			const [base, source] = userLeaves(panel);
 			await panel.setChecked([[base, vscode.TreeItemCheckboxState.Checked]]);
 			await fixture.runCommand('pinFilter', base);
-			const pinned = panel.getTreeItem(leaves(panel)[0]);
+			const pinned = panel.getTreeItem(userLeaves(panel)[0]);
 			assert.strictEqual(pinned.contextValue, 'searchFilter.pinned');
 			assert.strictEqual(pinned.checkboxState, undefined);
 			assert.strictEqual((pinned.iconPath as vscode.ThemeIcon).color?.id, 'customSearchFilters.pinnedForeground');
@@ -357,8 +416,8 @@ suite('Pinned filters', () => {
 				{ include: 'src/**/*', exclude: '**/dist/**' }
 			]);
 
-			await fixture.runCommand('unpinFilter', leaves(panel)[0]);
-			assert.strictEqual(panel.getTreeItem(leaves(panel)[0]).checkboxState, vscode.TreeItemCheckboxState.Unchecked);
+			await fixture.runCommand('unpinFilter', userLeaves(panel)[0]);
+			assert.strictEqual(panel.getTreeItem(userLeaves(panel)[0]).checkboxState, vscode.TreeItemCheckboxState.Unchecked);
 			assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), []);
 		});
 	});
@@ -368,7 +427,7 @@ suite('Pinned filters', () => {
 			settings: { globalFilters: [filter('base', '', '**/dist/**'), filter('off', '**/*.md'), filter('source')], globalFiltersEnabled: { off: false } }
 		}, async (fixture, panel) => {
 			fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
-			const [base, off] = leaves(panel);
+			const [base, off] = userLeaves(panel);
 			await fixture.runCommand('pinFilter', base);
 			await fixture.runCommand('pinFilter', off);
 
@@ -391,14 +450,14 @@ suite('Pinned filters', () => {
 
 	test('moves a pin on rename, keeps it while disabled, and drops it on delete', async () => {
 		await withPanel({ settings: { globalFilters: [filter('first')] } }, async (fixture, panel) => {
-			await fixture.runCommand('pinFilter', leaves(panel)[0]);
+			await fixture.runCommand('pinFilter', userLeaves(panel)[0]);
 			const repository = fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository');
 			await repository.saveFilter(filter('renamed'), undefined, 'first');
 			assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), [filterKey(filter('renamed'))]);
 			await repository.saveFilter({ ...filter('renamed'), enabled: false });
 			await panel.refresh();
 			assert.deepStrictEqual(fixture.workspaceState.get('pinnedFilterKeys'), [filterKey(filter('renamed'))]);
-			const disabled = panel.getTreeItem(leaves(panel)[0]);
+			const disabled = panel.getTreeItem(userLeaves(panel)[0]);
 			assert.strictEqual(disabled.contextValue, 'searchFilter.pinned');
 			assert.strictEqual((disabled.iconPath as vscode.ThemeIcon).color?.id, 'disabledForeground');
 			assert.strictEqual(disabled.resourceUri, undefined);
@@ -411,10 +470,10 @@ suite('Pinned filters', () => {
 
 	test('resolves pinned project filters for each workspace root', async () => {
 		await withPanel({ workspaceFilters: [filter('project')], extraWorkspaceFolderNames: ['other'] }, async (fixture, panel) => {
-			await fixture.runCommand('pinFilter', leaves(panel)[0]);
+			await fixture.runCommand('pinFilter', userLeaves(panel)[0]);
 			await fixture.load<typeof import('../searchUi')>('searchUi').runSearch(filter('typescript', '**/*.ts'));
 			assert.deepStrictEqual(searches(fixture), [
-				{ include: './fixture/**/*.ts,./other/**/*.ts,./fixture/src/**/*', exclude: '' }
+				{ include: './fixture/**/*.ts,./other/**/*.ts,./fixture/**/src/**/*', exclude: '' }
 			]);
 		});
 	});

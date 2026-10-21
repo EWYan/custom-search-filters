@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { FilterScope, SearchFilter, StoredSearchFilter, filterKey, scopeLabel } from './model/searchFilter';
+import { FilterScope, SearchFilter, StoredSearchFilter, filterKey, isBuiltinFilter, scopeLabel } from './model/searchFilter';
 import { combineForSearch, patternsForSearch } from './model/searchPatterns';
-import { loadAllFilters } from './storage/filterRepository';
+import { loadSearchFilters } from './storage/filterRepository';
 import { hasPinnedFilters, pinnedFilters } from './storage/pinnedFilters';
 
 export interface FilterQuickPickItem extends vscode.QuickPickItem {
@@ -9,6 +9,7 @@ export interface FilterQuickPickItem extends vscode.QuickPickItem {
 }
 
 export function formatFilterLabel(filter: StoredSearchFilter): string {
+	if (isBuiltinFilter(filter)) { return `$(globe) ${filter.name}`; }
 	const scopeIcon = filter.scope === 'workspace' ? '$(folder)' : '$(globe)';
 	return `${scopeIcon} ${filter.name} (${scopeLabel(filter)})`;
 }
@@ -21,7 +22,7 @@ export function describeFilter(filter: SearchFilter): string {
 export function toFilterQuickPickItems(filters: StoredSearchFilter[]): FilterQuickPickItem[] {
 	return filters.map(filter => ({
 		label: formatFilterLabel(filter),
-		description: describeFilter(filter),
+		description: isBuiltinFilter(filter) ? 'Built-in · Global' : describeFilter(filter),
 		filter
 	}));
 }
@@ -39,7 +40,7 @@ export async function searchWithPatterns(patterns: SearchFilter): Promise<void> 
 // Searches with one filter plus every enabled pinned filter.
 export async function runSearch(filter: StoredSearchFilter): Promise<void> {
 	const pinned = hasPinnedFilters()
-		? pinnedFilters(await loadAllFilters()).filter(other => filterKey(other) !== filterKey(filter))
+		? pinnedFilters(await loadSearchFilters()).filter(other => filterKey(other) !== filterKey(filter))
 		: [];
 	// The chosen filter is applied even when disabled, as before pins existed.
 	await searchWithPatterns(pinned.length > 0

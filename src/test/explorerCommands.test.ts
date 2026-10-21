@@ -88,21 +88,21 @@ suite('Explorer add to filter', () => {
 		fixture.inputs.push('project');
 		await fixture.runCommand('addFolderToInclude', vscode.Uri.joinPath(fixture.folder.uri, 'src'));
 		const saved = fixture.workspaceWrites[0] as SearchFilter[];
-		assert.strictEqual(saved[0].include, 'src/**/*');
+		assert.strictEqual(saved[0].include, './src/**/*');
 		const [project] = await fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository').loadAllFilters();
 		await fixture.load<typeof import('../searchUi')>('searchUi').runSearch(project);
 		assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/src/**/*');
 		const single = explorerFixture({ workspaceFilters: saved });
 		const [reopened] = await single.load<typeof import('../storage/filterRepository')>('storage/filterRepository').loadAllFilters();
 		await single.load<typeof import('../searchUi')>('searchUi').runSearch(reopened);
-		assert.strictEqual((single.executed[0].args[0] as { filesToInclude: string }).filesToInclude, 'src/**/*');
+		assert.strictEqual((single.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './src/**/*');
 	});
 
 	test('qualifies project patterns in a workspace file containing just one root', async () => {
 		const fixture = explorerFixture({ workspaceFilters: [filter('project')], workspaceFile: true });
 		const [project] = await fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository').loadAllFilters();
 		await fixture.load<typeof import('../searchUi')>('searchUi').runSearch(project);
-		assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/src/**/*');
+		assert.strictEqual((fixture.executed[0].args[0] as { filesToInclude: string }).filesToInclude, './fixture/**/src/**/*');
 	});
 
 	test('shows the patterns being added in the picker title', async () => {
@@ -159,7 +159,7 @@ suite('Explorer add to filter', () => {
 		assert.strictEqual(fixture.choices[1][0].value, 'workspace', 'Folder filters default to the project scope');
 		assert.strictEqual(fixture.inputBoxes.length, 1);
 		assert.strictEqual(fixture.inputBoxes[0].value, 'src');
-		assert.deepStrictEqual(fixture.workspaceWrites, [[{ name: 'src', include: 'src/**/*', exclude: '', scope: 'workspace' }]]);
+		assert.deepStrictEqual(fixture.workspaceWrites, [[{ name: 'src', include: './src/**/*', exclude: '', scope: 'workspace' }]]);
 		assert.match(fixture.messages.at(-1)!, /Created filter 'src'/);
 	});
 

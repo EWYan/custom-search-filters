@@ -200,7 +200,7 @@ suite('Activation regressions', () => {
 		}
 		await activation;
 		await fixture.runCommand('selectAndSearch');
-		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['legacy']);
+		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['All Workspace Files', 'legacy']);
 	});
 
 	test('keeps workspace filters usable when migration or global configuration fails', async () => {
@@ -210,7 +210,7 @@ suite('Activation regressions', () => {
 		});
 		await fixture.load<typeof import('../extension')>('extension').activate(fixture.context);
 		await fixture.runCommand('selectAndSearch');
-		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['project']);
+		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['All Workspace Files', 'project']);
 		assert.deepStrictEqual(fixture.state.get('customSearchFilters'), [filter('legacy')]);
 	});
 });
@@ -336,7 +336,7 @@ suite('Workspace filter enabled state', () => {
 		});
 		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
 		await fixture.runCommand('selectAndSearch');
-		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['default', 'enabled']);
+		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['All Workspace Files', 'default', 'enabled']);
 	});
 
 	test('keeps a disabled workspace filter disabled when its patterns are updated', async () => {
@@ -344,7 +344,7 @@ suite('Workspace filter enabled state', () => {
 		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
 		fixture.picks.push('disabled');
 		await fixture.runCommand('addFolderToInclude', vscode.Uri.joinPath(fixture.folder.uri, 'src'));
-		assert.deepStrictEqual(fixture.workspaceWrites, [[{ ...filter('disabled'), scope: 'workspace', enabled: false }]]);
+		assert.deepStrictEqual(fixture.workspaceWrites, [[{ ...filter('disabled', './src/**/*'), scope: 'workspace', enabled: false }]]);
 	});
 });
 

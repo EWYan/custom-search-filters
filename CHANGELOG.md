@@ -55,10 +55,11 @@ All notable changes to the "custom-search-filters" extension will be documented 
 - Save enabled states before filter definitions so a failed migration can be retried without losing disabled states.
 - Preserve enabled states for filter names such as `__proto__`.
 
-## [Unreleased]
+## [1.1.0] - 2026-10-22
 
 ### Added
 
+- Add a read-only **All Workspace Files** global filter with a globe icon, muted **Built-in** description, independent selection/pin identity, and no writes to filter configuration. It starts unchecked and unpinned and keeps other filters' exclusions when combined. Its compact single-line entry stays first; the search picker initially focuses a user-defined filter when available.
 - Add a persistent **Search Filters** panel with checkboxes, grouped scopes, a combined rule preview, explicit Apply, and Clear Selection.
 - Remember checked filters per workspace independently of enabled states; refresh on settings, project file, and workspace-root changes.
 - Pin filters from the **Search Filters** panel, **Select Filter and Search**, or the filter editor to add them to every search: Apply, **Select Filter and Search**, **Search Now**, and **Save and Search**. Pins are saved per workspace.
@@ -91,3 +92,6 @@ All notable changes to the "custom-search-filters" extension will be documented 
 - Qualify global include rules per root when combining them with project rules, preserving OR semantics in VS Code's search parser.
 - Preserve a single filter's include expression when adding exclusion-only filters, and retain extension shorthand such as `.ts` when combining include rules.
 - Clear checked state consistently when pinning through the panel, search list, or editor; unpinning leaves the filter unchecked.
+- Preserve recursive project include/exclude globs and extension shorthand in workspace files; keep new Explorer project folder selections explicitly rooted.
+- Preserve home-relative paths such as `~/projects/lib` when qualifying project filters or combining include rules.
+- Retain panel filters and selections on invalid or unreadable project JSON, recover after correction, and prevent edits from overwriting a file that failed to load.
