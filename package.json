@@ -7,63 +7,111 @@
     "type": "git",
     "url": "https://github.com/EWYan/custom-search-filters.git"
   },
-  "version": "1.0.1",
+  "version": "1.1.0",
   "engines": {
     "vscode": "^1.96.2"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:custom-search-filters.addFilter",
-    "onCommand:custom-search-filters.selectAndSearch",
-    "onCommand:custom-search-filters.deleteFilter",
-    "onCommand:custom-search-filters.addFolderToInclude",
-    "onCommand:custom-search-filters.addFolderToExclude",
-    "onCommand:custom-search-filters.editFilter",
-    "onCommand:custom-search-filters.addFileTypeToInclude",
-    "onCommand:custom-search-filters.addFileTypeToExclude",
-    "onCommand:custom-search-filters.recoverLegacyFilters"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "custom-search-filters.addFilter",
-        "title": "Custom Search: Add Filter"
+        "category": "Custom Search",
+        "title": "Add Filter",
+        "icon": "$(add)"
       },
       {
         "command": "custom-search-filters.selectAndSearch",
-        "title": "Custom Search: Select Filter and Search",
+        "category": "Custom Search",
+        "title": "Select Filter and Search",
         "icon": "$(filter)"
       },
       {
         "command": "custom-search-filters.deleteFilter",
-        "title": "Custom Search: Delete Filter"
+        "category": "Custom Search",
+        "title": "Delete Filter"
       },
       {
         "command": "custom-search-filters.addFolderToInclude",
-        "title": "Custom Search: Add Folder to Include Filter"
+        "category": "Custom Search",
+        "title": "Include Folder..."
       },
       {
         "command": "custom-search-filters.addFolderToExclude",
-        "title": "Custom Search: Add Folder to Exclude Filter"
+        "category": "Custom Search",
+        "title": "Exclude Folder..."
       },
       {
         "command": "custom-search-filters.editFilter",
-        "title": "Custom Search: Edit Filter"
+        "category": "Custom Search",
+        "title": "Edit Filter"
       },
       {
         "command": "custom-search-filters.recoverLegacyFilters",
-        "title": "Custom Search: Recover Legacy Filters"
+        "category": "Custom Search",
+        "title": "Recover Legacy Filters"
       },
       {
         "command": "custom-search-filters.addFileTypeToInclude",
-        "title": "Custom Search: Add File Type to Include Filter"
+        "category": "Custom Search",
+        "title": "Include File Type..."
       },
       {
         "command": "custom-search-filters.addFileTypeToExclude",
-        "title": "Custom Search: Add File Type to Exclude Filter"
+        "category": "Custom Search",
+        "title": "Exclude File Type..."
+      },
+      {
+        "command": "custom-search-filters.showFilters",
+        "category": "Custom Search",
+        "title": "Show Filters Panel",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "custom-search-filters.applySelectedFilters",
+        "category": "Custom Search",
+        "title": "Apply Selected Filters",
+        "icon": "$(play)"
+      },
+      {
+        "command": "custom-search-filters.clearFilterSelection",
+        "category": "Custom Search",
+        "title": "Clear Filter Selection",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "custom-search-filters.refreshFilters",
+        "category": "Custom Search",
+        "title": "Refresh Filters",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "custom-search-filters.editPanelFilter",
+        "category": "Custom Search",
+        "title": "Edit Filter",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "custom-search-filters.pinFilter",
+        "category": "Custom Search",
+        "title": "Pin Filter",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "custom-search-filters.unpinFilter",
+        "category": "Custom Search",
+        "title": "Unpin Filter",
+        "icon": "$(pinned)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "custom-search-filters.explorerSubmenu",
+        "label": "Search Filters"
       }
     ],
     "configuration": {
@@ -72,7 +120,7 @@
         "custom-search-filters.globalFilters": {
           "type": "array",
           "default": [],
-          "description": "Global search filters that are available across all projects. These filters can be synced via VS Code Settings Sync.",
+          "description": "Global search filters that are available across all projects. These filters can be synced via VS Code Settings Sync. Only user settings are used; workspace values are ignored.",
           "items": {
             "type": "object",
             "required": [
@@ -108,19 +156,86 @@
         "custom-search-filters.globalFiltersEnabled": {
           "type": "object",
           "default": {},
-          "description": "Enable/disable global filters. Each filter name maps to a boolean value indicating if it's enabled. All global filters are automatically added here when created, and removed when deleted. Filters are enabled (true) by default.",
+          "description": "Enable/disable global filters. Each filter name maps to a boolean value indicating if it's enabled. All global filters are automatically added here when created, and removed when deleted. Filters are enabled (true) by default. Only user settings are used; workspace values are ignored.",
           "additionalProperties": {
             "type": "boolean"
           }
         }
       }
     },
+    "colors": [
+      {
+        "id": "customSearchFilters.pinnedForeground",
+        "description": "Color of pinned filters in the Search Filters panel.",
+        "defaults": {
+          "dark": "charts.yellow",
+          "light": "charts.orange",
+          "highContrast": "charts.yellow",
+          "highContrastLight": "charts.orange"
+        }
+      }
+    ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "custom-search-filters.addFolderToInclude",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.addFolderToExclude",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.addFileTypeToInclude",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.addFileTypeToExclude",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.editPanelFilter",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.pinFilter",
+          "when": "false"
+        },
+        {
+          "command": "custom-search-filters.unpinFilter",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "custom-search-filters.selectAndSearch",
           "when": "view == workbench.view.search",
           "group": "navigation"
+        },
+        {
+          "command": "custom-search-filters.applySelectedFilters",
+          "when": "view == custom-search-filters.filters",
+          "group": "navigation@1"
+        },
+        {
+          "command": "custom-search-filters.clearFilterSelection",
+          "when": "view == custom-search-filters.filters",
+          "group": "navigation@2"
+        },
+        {
+          "command": "custom-search-filters.addFilter",
+          "when": "view == custom-search-filters.filters",
+          "group": "navigation@3"
+        },
+        {
+          "command": "custom-search-filters.refreshFilters",
+          "when": "view == custom-search-filters.filters",
+          "group": "navigation@4"
+        },
+        {
+          "command": "custom-search-filters.showFilters",
+          "when": "view == workbench.view.search",
+          "group": "navigation@2"
         }
       ],
       "editor/title": [
@@ -131,24 +246,66 @@
       ],
       "explorer/context": [
         {
+          "submenu": "custom-search-filters.explorerSubmenu",
+          "when": "explorerResourceIsFolder || resourceExtname != ''",
+          "group": "4_search@10"
+        }
+      ],
+      "custom-search-filters.explorerSubmenu": [
+        {
           "command": "custom-search-filters.addFolderToInclude",
           "when": "explorerResourceIsFolder",
-          "group": "navigation@5"
+          "group": "1_folder@1"
         },
         {
           "command": "custom-search-filters.addFolderToExclude",
           "when": "explorerResourceIsFolder",
-          "group": "navigation@6"
+          "group": "1_folder@2"
         },
         {
           "command": "custom-search-filters.addFileTypeToInclude",
           "when": "resourceExtname != '' && !explorerResourceIsFolder",
-          "group": "navigation@7"
+          "group": "2_fileType@1"
         },
         {
           "command": "custom-search-filters.addFileTypeToExclude",
           "when": "resourceExtname != '' && !explorerResourceIsFolder",
-          "group": "navigation@8"
+          "group": "2_fileType@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "custom-search-filters.pinFilter",
+          "when": "view == custom-search-filters.filters && (viewItem == searchFilter || viewItem == searchFilter.builtin)",
+          "group": "inline@1"
+        },
+        {
+          "command": "custom-search-filters.unpinFilter",
+          "when": "view == custom-search-filters.filters && (viewItem == searchFilter.pinned || viewItem == searchFilter.builtin.pinned)",
+          "group": "inline@1"
+        },
+        {
+          "command": "custom-search-filters.editPanelFilter",
+          "when": "view == custom-search-filters.filters && (viewItem == searchFilter || viewItem == searchFilter.pinned)",
+          "group": "inline@2"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "custom-search-filters",
+          "title": "Search Filters",
+          "icon": "media/filter.svg"
+        }
+      ]
+    },
+    "views": {
+      "custom-search-filters": [
+        {
+          "id": "custom-search-filters.filters",
+          "name": "Filters",
+          "visibility": "visible"
         }
       ]
     }

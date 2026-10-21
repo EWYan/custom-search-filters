@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
-import { SearchFilter, StoredSearchFilter, WorkspaceSearchFilter } from '../model/searchFilter';
+import { ALL_WORKSPACE_FILES } from '../model/builtinFilters';
+import { FilterScope, SearchFilter, StoredSearchFilter, WorkspaceSearchFilter, filterKey, isBuiltinFilter } from '../model/searchFilter';
+import { notifyFilterChange } from './filterEvents';
 import { loadGlobalFilters, saveGlobalFilters } from './globalFilters';
 import { getWorkspaceFolderForUri, loadAllWorkspaceFilters, loadWorkspaceFilters, saveWorkspaceFilters } from './workspaceFilters';
 
@@ -10,8 +12,35 @@ export async function loadAllFilters(): Promise<StoredSearchFilter[]> {
 	];
 }
 
-export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: vscode.WorkspaceFolder): Promise<void> {
+// Search choices also include built-ins. Editing and persistence use stored filters only.
+export async function loadSearchFilters(): Promise<StoredSearchFilter[]> {
+	return [ALL_WORKSPACE_FILES, ...await loadAllFilters()];
+}
+
+export function hasNameConflict(
+	filters: StoredSearchFilter[],
+	name: string,
+	scope: FilterScope,
+	workspaceFolder?: vscode.WorkspaceFolder,
+	originalName?: string
+): boolean {
+	return filters.some(existing => {
+		if (isBuiltinFilter(existing)) { return false; }
+		if (existing.name !== name || existing.name === originalName || existing.scope !== scope) {
+			return false;
+		}
+		if (scope !== 'workspace') {
+			return true;
+		}
+		return (existing as WorkspaceSearchFilter).workspaceFolder.uri.toString() === workspaceFolder?.uri.toString();
+	});
+}
+
+// Pass originalName when renaming so the filter keeps its position and is written once.
+export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: vscode.WorkspaceFolder, originalName?: string): Promise<void> {
+	if (isBuiltinFilter(filter)) { throw new Error('Built-in filters are read-only.'); }
 	const scope = filter.scope || 'global';
+	const nameToReplace = originalName ?? filter.name;
 
 	if (scope === 'workspace') {
 		const workspaceFolder = targetWorkspaceFolder || getWorkspaceFolderForUri();
@@ -20,18 +49,22 @@ export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: v
 		}
 
 		const filters = await loadWorkspaceFilters(workspaceFolder);
-		const existingIndex = filters.findIndex(existing => existing.name === filter.name);
+		const existingIndex = filters.findIndex(existing => existing.name === nameToReplace);
 		if (existingIndex > -1) {
 			filters[existingIndex] = { ...filter, scope: 'workspace', workspaceFolder };
 		} else {
 			filters.push({ ...filter, scope: 'workspace', workspaceFolder });
 		}
 		await saveWorkspaceFilters(workspaceFolder, filters);
+		notifyFilterChange({
+			previousKey: filterKey({ ...filter, name: nameToReplace, scope: 'workspace', workspaceFolder }),
+			filter: { ...filter, scope: 'workspace', workspaceFolder }
+		});
 		return;
 	}
 
 	const filters = loadGlobalFilters();
-	const existingIndex = filters.findIndex(existing => existing.name === filter.name);
+	const existingIndex = filters.findIndex(existing => existing.name === nameToReplace);
 	if (existingIndex > -1) {
 		filters[existingIndex] = {
 			...filter,
@@ -42,9 +75,11 @@ export async function saveFilter(filter: SearchFilter, targetWorkspaceFolder?: v
 		filters.push({ ...filter, scope: 'global', enabled: filter.enabled !== undefined ? filter.enabled : true });
 	}
 	await saveGlobalFilters(filters);
+	notifyFilterChange({ previousKey: filterKey({ ...filter, name: nameToReplace, scope: 'global' }), filter });
 }
 
 export async function deleteFilter(filter: StoredSearchFilter): Promise<void> {
+	if (isBuiltinFilter(filter)) { throw new Error('Built-in filters are read-only.'); }
 	if (filter.scope === 'workspace') {
 		const workspaceFilter = filter as WorkspaceSearchFilter;
 		const filters = await loadWorkspaceFilters(workspaceFilter.workspaceFolder);
@@ -52,8 +87,10 @@ export async function deleteFilter(filter: StoredSearchFilter): Promise<void> {
 			workspaceFilter.workspaceFolder,
 			filters.filter(existing => existing.name !== filter.name)
 		);
+		notifyFilterChange({ previousKey: filterKey(filter) });
 		return;
 	}
 
 	await saveGlobalFilters(loadGlobalFilters().filter(existing => existing.name !== filter.name));
+	notifyFilterChange({ previousKey: filterKey(filter) });
 }

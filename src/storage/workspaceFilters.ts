@@ -1,11 +1,10 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { SearchFilter, WorkspaceSearchFilter, normalizeFilter } from '../model/searchFilter';
 
 const PROJECT_FILTERS_FILE = '.vscode/custom-search-filters.json';
 
 function filtersUri(workspaceFolder: vscode.WorkspaceFolder): vscode.Uri {
-	return vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, PROJECT_FILTERS_FILE));
+	return vscode.Uri.joinPath(workspaceFolder.uri, PROJECT_FILTERS_FILE);
 }
 
 export function getWorkspaceFolderForUri(uri?: vscode.Uri): vscode.WorkspaceFolder | undefined {
@@ -25,11 +24,12 @@ export function getWorkspaceFolderForUri(uri?: vscode.Uri): vscode.WorkspaceFold
 }
 
 export async function loadWorkspaceFilters(workspaceFolder: vscode.WorkspaceFolder): Promise<WorkspaceSearchFilter[]> {
+	const uri = filtersUri(workspaceFolder);
 	try {
-		const content = await vscode.workspace.fs.readFile(filtersUri(workspaceFolder));
+		const content = await vscode.workspace.fs.readFile(uri);
 		const parsed = JSON.parse(Buffer.from(content).toString('utf8'));
 		if (!Array.isArray(parsed)) {
-			return [];
+			throw new Error('Expected a JSON array of filters.');
 		}
 
 		return parsed
@@ -40,11 +40,12 @@ export async function loadWorkspaceFilters(workspaceFolder: vscode.WorkspaceFold
 			}))
 			.filter(filter => filter.name.length > 0);
 	} catch (error) {
-		if (error instanceof vscode.FileSystemError) {
+		if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
 			return [];
 		}
-		console.error('Error loading project filters:', error);
-		return [];
+		// A failed read is not a deletion. Abort refreshes and read-modify-write operations
+		// so temporary edits or permission errors cannot clear selections or overwrite data.
+		throw new Error(`Cannot load project filters from ${uri.fsPath}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
 	}
 }
 
@@ -56,7 +57,7 @@ export async function loadAllWorkspaceFilters(): Promise<WorkspaceSearchFilter[]
 
 export async function saveWorkspaceFilters(workspaceFolder: vscode.WorkspaceFolder, filters: SearchFilter[]): Promise<void> {
 	const uri = filtersUri(workspaceFolder);
-	const dirUri = vscode.Uri.file(path.dirname(uri.fsPath));
+	const dirUri = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode');
 	const workspaceFilters = filters
 		.map(filter => normalizeFilter(filter, 'workspace'))
 		.filter(filter => filter.name.length > 0);

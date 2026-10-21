@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { SearchFilter } from '../model/searchFilter';
 import { createExtensionFixture } from './helpers/extensionFixture';
@@ -198,7 +200,7 @@ suite('Activation regressions', () => {
 		}
 		await activation;
 		await fixture.runCommand('selectAndSearch');
-		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['legacy']);
+		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['All Workspace Files', 'legacy']);
 	});
 
 	test('keeps workspace filters usable when migration or global configuration fails', async () => {
@@ -208,7 +210,7 @@ suite('Activation regressions', () => {
 		});
 		await fixture.load<typeof import('../extension')>('extension').activate(fixture.context);
 		await fixture.runCommand('selectAndSearch');
-		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['project']);
+		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['All Workspace Files', 'project']);
 		assert.deepStrictEqual(fixture.state.get('customSearchFilters'), [filter('legacy')]);
 	});
 });
@@ -223,6 +225,7 @@ suite('Pattern command regressions', () => {
 					fileType: (kind === 'Folder' ? vscode.FileType.Directory : vscode.FileType.File) | vscode.FileType.SymbolicLink
 				});
 				fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+				fixture.picks.push('target');
 				const uri = vscode.Uri.joinPath(fixture.folder.uri, kind === 'Folder' ? 'linked-src' : 'linked.ts');
 				await fixture.runCommand(`add${kind}To${suffix}`, uri);
 				const saved = fixture.settings.get('globalFilters') as SearchFilter[];
@@ -230,12 +233,13 @@ suite('Pattern command regressions', () => {
 			});
 		}
 
-		test(`allows overwriting ${target} with a subset of existing folders`, async () => {
+		test(`allows replacing ${target} with a subset of existing folders`, async () => {
 			const existing = { ...filter('target', ''), [target]: 'src/**/*,test/**/*' };
 			const fixture = createExtensionFixture({ settings: { globalFilters: [existing] } });
 			fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+			fixture.picks.push({ item: 'target', button: 0 });
 			await fixture.runCommand(`addFolderTo${suffix}`, vscode.Uri.joinPath(fixture.folder.uri, 'src'));
-			assert.deepStrictEqual(fixture.choices[1].map(item => item.action), ['overwrite']);
+			assert.match(String(fixture.choices[0].find(item => item.filter)?.detail), /Already contains/);
 			const saved = fixture.settings.get('globalFilters') as SearchFilter[];
 			assert.strictEqual(saved[0][target], 'src/**/*');
 		});
@@ -244,6 +248,7 @@ suite('Pattern command regressions', () => {
 	test('skips writes when append and overwrite would both leave the pattern unchanged', async () => {
 		const fixture = createExtensionFixture({ settings: { globalFilters: [filter('target')] } });
 		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+		fixture.picks.push('target');
 		await fixture.runCommand('addFolderToInclude', vscode.Uri.joinPath(fixture.folder.uri, 'src'));
 		assert.strictEqual(fixture.choices.length, 1);
 		assert.deepStrictEqual(fixture.updates, []);
@@ -252,8 +257,8 @@ suite('Pattern command regressions', () => {
 
 	test('still supports appending a new folder without losing existing patterns', async () => {
 		const fixture = createExtensionFixture({ settings: { globalFilters: [filter('target')] } });
-		fixture.selection.action = 'append';
 		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+		fixture.picks.push('target');
 		await fixture.runCommand('addFolderToInclude', vscode.Uri.joinPath(fixture.folder.uri, 'test'));
 		const saved = fixture.settings.get('globalFilters') as SearchFilter[];
 		assert.strictEqual(saved[0].include, 'src/**/*,test/**/*');
@@ -290,5 +295,93 @@ suite('Malformed configuration regressions', () => {
 		} });
 		const filters = fixture.load<typeof import('../storage/globalFilters')>('storage/globalFilters').loadGlobalFilters();
 		assert.deepStrictEqual(filters.map(item => item.enabled), [false, true]);
+	});
+});
+
+suite('Workspace setting override regressions', () => {
+	const workspaceSettings = {
+		globalFilters: [filter('workspace-override')],
+		globalFiltersEnabled: { user: true, 'workspace-override': true }
+	};
+
+	test('lists only user-level global filters and enabled states', async () => {
+		const fixture = createExtensionFixture({
+			settings: { globalFilters: [filter('user')], globalFiltersEnabled: { user: false } },
+			workspaceSettings
+		});
+		const filters = await fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository').loadAllFilters();
+		assert.deepStrictEqual(filters.map(item => [item.name, item.enabled]), [['user', false]]);
+	});
+
+	test('saves and deletes global filters without copying workspace values into user settings', async () => {
+		const fixture = createExtensionFixture({
+			settings: { globalFilters: [filter('user')], globalFiltersEnabled: { user: false } },
+			workspaceSettings
+		});
+		const repository = fixture.load<typeof import('../storage/filterRepository')>('storage/filterRepository');
+		await repository.saveFilter(filter('added'));
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), [filter('user'), filter('added')]);
+		assert.deepStrictEqual(fixture.settings.get('globalFiltersEnabled'), { user: false, added: true });
+
+		await repository.deleteFilter(filter('user'));
+		assert.deepStrictEqual(fixture.settings.get('globalFilters'), [filter('added')]);
+		assert.deepStrictEqual(fixture.settings.get('globalFiltersEnabled'), { added: true });
+	});
+});
+
+suite('Workspace filter enabled state', () => {
+	test('hides workspace filters explicitly disabled in the project file', async () => {
+		const fixture = createExtensionFixture({
+			workspaceFilters: [{ ...filter('disabled'), enabled: false }, filter('default'), { ...filter('enabled'), enabled: true }]
+		});
+		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+		await fixture.runCommand('selectAndSearch');
+		assert.deepStrictEqual(fixture.picker.items.map(item => item.filter?.name), ['All Workspace Files', 'default', 'enabled']);
+	});
+
+	test('keeps a disabled workspace filter disabled when its patterns are updated', async () => {
+		const fixture = createExtensionFixture({ workspaceFilters: [{ ...filter('disabled', ''), enabled: false }] });
+		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+		fixture.picks.push('disabled');
+		await fixture.runCommand('addFolderToInclude', vscode.Uri.joinPath(fixture.folder.uri, 'src'));
+		assert.deepStrictEqual(fixture.workspaceWrites, [[{ ...filter('disabled', './src/**/*'), scope: 'workspace', enabled: false }]]);
+	});
+});
+
+suite('Multi-root folder patterns', () => {
+	for (const [relative, expected] of [['src', './fixture/src/**/*'], ['', './fixture/**/*']] as const) {
+		test(`scopes ${relative || 'a root'} folder to its workspace folder name`, async () => {
+			const fixture = createExtensionFixture({
+				settings: { globalFilters: [filter('target', '')] },
+				extraWorkspaceFolderNames: ['other']
+			});
+			fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+			fixture.picks.push('target');
+			const uri = relative ? vscode.Uri.joinPath(fixture.folder.uri, relative) : fixture.folder.uri;
+			await fixture.runCommand('addFolderToExclude', uri);
+			const saved = fixture.settings.get('globalFilters') as SearchFilter[];
+			assert.strictEqual(saved[0].exclude, expected);
+		});
+	}
+
+	test('keeps plain relative folder patterns in a single-root workspace', async () => {
+		const fixture = createExtensionFixture({ settings: { globalFilters: [filter('target', '')] } });
+		fixture.load<typeof import('../commands')>('commands').registerCommands(fixture.context);
+		fixture.picks.push('target');
+		await fixture.runCommand('addFolderToInclude', fixture.folder.uri);
+		const saved = fixture.settings.get('globalFilters') as SearchFilter[];
+		assert.strictEqual(saved[0].include, '**/*');
+	});
+});
+
+suite('Manifest consistency', () => {
+	test('registers every contributed command and relies on implicit activation', async () => {
+		const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8'));
+		const fixture = createExtensionFixture();
+		await fixture.load<typeof import('../extension')>('extension').activate(fixture.context);
+		const contributed = manifest.contributes.commands.map((command: { command: string }) => command.command).sort();
+		assert.deepStrictEqual([...fixture.handlers.keys()].sort(), contributed);
+		assert.deepStrictEqual(manifest.activationEvents, []);
+		fixture.dispose();
 	});
 });
