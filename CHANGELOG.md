@@ -100,7 +100,7 @@ All notable changes to the "custom-search-filters" extension will be documented 
 
 ### Added
 
-- Add a search-and-filter extension icon for the Extensions view and Marketplace listing.
+- Add a transparent blue search-and-filter extension icon for the Extensions view and Marketplace listing.
 
 ### Changed
 
