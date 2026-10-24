@@ -2,12 +2,13 @@
   "name": "custom-search-filters",
   "displayName": "custom-search-filters",
   "description": "Manage reusable include and exclude filters for VS Code file search",
+  "icon": "media/icon.png",
   "publisher": "juzidaxia",
   "repository": {
     "type": "git",
     "url": "https://github.com/EWYan/custom-search-filters.git"
   },
-  "version": "1.1.0",
+  "version": "1.1.1",
   "engines": {
     "vscode": "^1.96.2"
   },

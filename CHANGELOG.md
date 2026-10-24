@@ -95,3 +95,13 @@ All notable changes to the "custom-search-filters" extension will be documented 
 - Preserve recursive project include/exclude globs and extension shorthand in workspace files; keep new Explorer project folder selections explicitly rooted.
 - Preserve home-relative paths such as `~/projects/lib` when qualifying project filters or combining include rules.
 - Retain panel filters and selections on invalid or unreadable project JSON, recover after correction, and prevent edits from overwriting a file that failed to load.
+
+## [1.1.1] - 2026-10-24
+
+### Added
+
+- Add a search-and-filter extension icon for the Extensions view and Marketplace listing.
+
+### Changed
+
+- Reorganize the user guide with quick-start steps, configuration examples, native search-clearing instructions, and troubleshooting, and add a Simplified Chinese translation.

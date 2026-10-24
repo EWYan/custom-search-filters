@@ -1,169 +1,241 @@
-# custom-search-filters
+<img src="media/icon.png" alt="Custom Search Filters icon" width="80" height="80">
 
-Manage and apply custom include/exclude file patterns for VS Code's search functionality.
+# Custom Search Filters
 
-## Features
+**English** | [简体中文](README.zh-CN.md)
 
-All commands can be accessed via the Command Palette (Ctrl+Shift+P or Cmd+Shift+P), where they are listed under **Custom Search**, unless otherwise noted.
+Save reusable include/exclude rules for VS Code's native file search. Switch between search scopes, combine several filters, and keep common exclusions pinned.
 
-*   **Custom Search: Add Filter**:
-    *   Prompts for a filter name, include pattern (glob), and exclude pattern (glob).
-    *   Saves the filter for later use.
-*   **Custom Search: Select Filter and Search**:
-    *   Shows a list of your saved filters.
-    *   Selecting a filter opens the Search view with the corresponding include/exclude patterns pre-filled.
-    *   Also available from the filter icon in the Search view and editor title bars.
-    *   Each entry has a pin button (see [Pinned Filters](#pinned-filters)). User-defined filters also have edit (pencil) and delete (✕) buttons.
-    *   Any pinned filters are added to the selected filter's patterns.
-*   **Custom Search: Delete Filter**:
-    *   Shows a list of your saved filters.
-    *   Select a filter to permanently remove it.
-*   **Custom Search: Edit Filter**:
-    *   Shows a list of all saved filters, including disabled ones.
-    *   Selecting a filter opens the filter editor (see [Editing Filters](#editing-filters)).
+- **Reusable filters:** save rules globally or alongside a project.
+- **Checkbox panel:** combine filters and preview the patterns before applying them.
+- **Pinned filters:** automatically add shared rules to searches started by the extension.
+- **Explorer actions:** build filters from selected folders or file types.
 
-## Built-in All Workspace Files
+[Quick start](#quick-start) · [Usage](#usage) · [Patterns](#patterns-and-combination) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
-**All Workspace Files** is available in the panel's **Global** group and in **Select Filter and Search**, even when no filters are saved. It stays first, with the standard globe icon and a muted **Built-in** description that remains when pinned. The search picker uses one line, with no extra explanation row, and initially focuses a user-defined filter when one is available. The panel tooltip contains the full explanation.
+## Installation
 
-It includes `**/*` with no exclusions and starts unchecked and unpinned. Select it to search all roots in the current workspace. Other filters' exclusions still apply. Because includes combine with OR, selecting or pinning it broadens narrower include filters to all workspace files.
+Requires **VS Code 1.96.2 or later**. This guide describes the **1.1.x** features.
 
-This filter is read-only: it has no edit/delete actions and cannot receive patterns from the Explorer. Its definition is not written to user settings or project files. You can check, clear, pin, or unpin it normally; selection and pin state are remembered per workspace, independently of any user filter with the same name.
+Install from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=juzidaxia.custom-search-filters), or search for `@id:juzidaxia.custom-search-filters` in the Extensions view. For a local build, run **Extensions: Install from VSIX...** and select its `.vsix` file. See [VS Code's installation guide](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#install-from-a-vsix).
 
-## Persistent Filters Panel
+If your installed version lacks the panel or pin actions, install a 1.1.x build.
 
-Run **Custom Search: Show Filters Panel**, click the list-tree icon in the Search view title, or open **Search Filters** in the bottom panel. Filters are grouped by global scope and workspace root. Hover a filter to show its actions: the pin button pins it (see [Pinned Filters](#pinned-filters)) and user-defined filters have a pencil button for editing. Disabled filters remain visible without a checkbox.
+## Quick start
 
-1. Check the filters to combine. The panel previews the resulting **Include** and **Exclude** patterns, including exact overlaps where exclusion takes precedence.
-2. Click **Apply Selected Filters** (play icon) to fill the native search path fields and run the search. Checking boxes alone never starts a search.
-3. **Clear Filter Selection** only clears checkboxes. Click **Apply** with nothing checked to use pinned filters only; if no enabled filters are pinned, both search path fields are cleared.
+1. Open a folder or workspace. Open the Command Palette with **Ctrl+Shift+P** (**Cmd+Shift+P** on macOS).
+2. Run **Custom Search: Add Filter**. Enter `TypeScript` as the name, `**/*.ts` as **Include**, leave **Exclude** empty, and choose **Global**.
+3. Open VS Code's Search view and enter a search term.
+4. Run **Custom Search: Select Filter and Search**, then choose **TypeScript**. The extension fills **files to include** and **files to exclude** and runs the search.
 
-When several filters provide includes, their patterns are combined with **OR**; all exclude patterns apply to the combined scope. If only one filter provides includes, its expression keeps VS Code's existing semantics, including path/glob combinations such as `./src,**/*.ts`. An exclusion-only filter does not broaden another filter's include scope. For example, combining separate `src/**` and `**/*.ts` filters searches either match. This combines rules, not the independent search results of each filter. Duplicate patterns are removed; brace expressions such as `**/*.{ts,js}` remain intact. Includes and excludes are never moved between the original filters by the panel.
+You can also open the filter picker from the filter icon in the Search view or editor title bar.
 
-Checkboxes are saved per workspace, separately from each filter's enabled state. Reopening restores the selection without running a search. Renaming through the extension keeps the selection; deleting, disabling, or removing a filter's workspace root clears its selection. Settings and project file changes refresh the panel automatically.
+## Usage
 
-If a project filter file contains invalid JSON or cannot be read, the panel keeps its previous filters and selections and reports the file path. Fix the file to refresh automatically, or use **Refresh Filters**. Searches and edits that load filters stop until it can be read; a valid empty array or a deleted file clears the corresponding selections.
+### Combine filters in the panel
 
-Applying uses VS Code's **Find in Files** command and preserves the current regex, case-sensitive, and whole-word options. VS Code controls focus and may seed the search term from the editor selection. It also honors `search.mode`: use `view` for the sidebar, or your configured Search Editor mode. Editing search fields manually does not change the panel's checkboxes; the next Apply replaces those path fields with the preview.
+Run **Custom Search: Show Filters Panel**, or click the list-tree icon in the Search view title bar. The **Search Filters** panel groups filters under **Global** and each project.
 
-## Pinned Filters
+1. Check the filters you want to use.
+2. Review the **Include** and **Exclude** preview, which also contains pinned rules.
+3. Click **Apply Selected Filters** (play icon).
 
-Pin a filter that should apply to every search, such as one that excludes build output or tests. Every search the extension starts then combines the pinned filters with the filter you choose, so you do not have to select them again each time.
+Checking boxes updates the preview; **Apply** starts the search. Exact include/exclude overlaps appear as **Overlap (excluded)**. Disabled filters remain visible without a checkbox.
 
-### Pinning and Unpinning
+**Clear Filter Selection** clears checkboxes. Apply again to use only pinned filters; if none are enabled and pinned, both search path fields are cleared. Each Apply replaces any patterns you entered manually.
 
-| Where | How |
+Selections are remembered per workspace. Reopening restores them without starting a search.
+
+<!-- Screenshot slot (media/screenshots/filters-panel.png): Search Filters panel with two checked filters, one pinned exclusion filter, and the native search fields after Apply. -->
+
+### Keep common rules pinned
+
+For a rule you reuse often, such as excluding generated files, click its pin button in the panel or search picker. You can also toggle **Pinned** in the filter editor and save.
+
+A useful starting filter is `Skip dependencies and builds`: leave **Include** empty and set **Exclude** to `**/node_modules/**,**/dist/**`. Pin it, then choose a language or project filter.
+
+| Search action | Rules applied |
 |---|---|
-| **Search Filters** panel | Hover a filter and click the pin button. Click it again to unpin. |
-| **Select Filter and Search** | Click the pin button on an entry. The list stays open, so you can pin several filters and then pick one to search. |
-| Filter editor | Select **Pinned** to toggle it, then choose **Save**. Like other fields, it is marked `● modified` and is discarded if you leave without saving. |
+| **Apply Selected Filters** | Pinned + checked filters |
+| **Apply Selected Filters**, nothing checked | Pinned filters only |
+| **Select Filter and Search** | Pinned + chosen filter |
+| **Search Now** or **Save and Search** | Pinned + the current filter |
 
-### How Pinned Filters Look
+A colored pin replaces the checkbox in the panel. Pinning clears that filter's checkbox selection; unpinning leaves it unchecked. Disabled filters retain their pins but are skipped automatically. Explicit **Save and Search** still uses the edited filter.
 
-*   **Panel**: a pinned filter shows a colored pin instead of a checkbox, and its name uses the same color. A pinned filter that is disabled shows a gray pin. The panel title shows the count, for example `1 selected · 2 pinned`.
-*   **Select Filter and Search**: pinned entries end with a pin icon, their description starts with `Pinned ·`, and the placeholder says how many pinned filters will be added.
+Pins and checkbox selections are local to each workspace. Renaming through the extension keeps them; deleting through the extension removes them. Disabling clears a checkbox selection.
 
-The default color follows your theme: yellow in dark themes and orange in light themes. To change it, add the `customSearchFilters.pinnedForeground` color to your user settings:
+<!-- Screenshot slot (media/screenshots/filter-picker.png): Select Filter and Search showing the compact built-in entry, user filters, and a pinned filter. -->
+
+### Search all workspace files
+
+**All Workspace Files** is a built-in, read-only filter at the top of the list. It includes `**/*`, has no exclusions, and starts unchecked and unpinned.
+
+Selecting or pinning it broadens the include scope to all workspace roots. Exclusions from other filters still apply, along with VS Code's search exclusions and ignore-file behavior. Its **Built-in** marker distinguishes it from saved filters; it cannot be edited, deleted, or used as an Explorer save target.
+
+### Clear the current search
+
+Run **Search: Clear Search Results**, or click the clear button in the Search view title bar. When the search or replace field contains text, it clears those fields and the results. Run it again with both fields empty to also clear **files to include** and **files to exclude**. See [VS Code's command behavior](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/search/browser/searchView.ts#L1274-L1308).
+
+This leaves the plugin's checkboxes and pins unchanged; the next **Apply** fills the path fields with their rules again. **Clear Filter Selection** clears only the checkboxes.
+
+### Add folders and file types
+
+Right-click one or more items in the Explorer and open **Search Filters**:
+
+| Selection | Actions | Example pattern |
+|---|---|---|
+| Folders | **Include Folder...**, **Exclude Folder...** | `./src/utils/**/*` in a project filter |
+| Files with extensions | **Include File Type...**, **Exclude File Type...** | `**/*.ts` |
+
+Choose an existing filter to append patterns, use its replace button to replace that list, or select **New Filter...** to choose a scope and name. Folders default to **Current Project**; file types default to **Global**. Select Global when adding folders from several workspace roots.
+
+Duplicates are skipped. An identical pattern in the opposite list is moved, so it is not both included and excluded. Afterwards, choose **Search Now**, **Edit Filter**, or **Undo**. Undo checks for later changes before restoring the filter.
+
+These actions use the Explorer selection and appear only in its context menu.
+
+### Edit saved filters
+
+Run **Custom Search: Edit Filter**, or click a filter's pencil button. Edit **Name**, **Include**, **Exclude**, **Enabled**, or **Pinned**, then choose **Save** or **Save and Search**. Changes remain drafts until saved; **Discard Changes** abandons them.
+
+For several patterns, **Choose Patterns to Keep** lets you remove entries with a checklist. Disabled filters are available for editing but hidden from the search picker.
+
+## Patterns and combination
+
+| Goal | Include | Exclude |
+|---|---|---|
+| TypeScript files | `**/*.ts` | Empty |
+| C/C++ sources and headers | `**/*.{c,h,cpp,hpp}` | Empty |
+| Project's top-level `src`, without tests | `./src/**/*` | `**/*.{test,spec}.ts` |
+| Reusable exclusions | Empty | `**/node_modules/**,**/dist/**` |
+
+Use forward slashes in paths and commas between patterns. Brace groups such as `**/*.{ts,js}` stay intact.
+
+- **Includes from multiple filters combine with OR.** A project filter for `./src/**/*` plus a global filter for `**/*.ts` searches files in that `src` **or** TypeScript files elsewhere. For TypeScript only inside `src`, use `./src/**/*.ts` in one project filter.
+- **Every exclusion applies to the combined scope.** Excludes take precedence over includes.
+- **Exclusion-only filters preserve the include scope.** If no filter supplies includes, the include field stays empty.
+- **One include-bearing filter keeps native VS Code semantics**, including a path/glob expression such as `./src,**/*.ts`. Combining several include-bearing filters merges their pattern lists; it does not evaluate each filter as a separate search. Duplicate patterns are removed.
+
+Project patterns such as `src/**/*` match recursively; `./src/**/*` targets the project's root-level `src`. In a multi-root workspace, the extension qualifies project patterns with the current root name at search time, so the same saved project filter also works when opened alone. Absolute and home-relative paths such as `~/projects/lib` retain native search behavior.
+
+See [VS Code's search syntax](https://code.visualstudio.com/docs/editing/codebasics#advanced-search-options) for the underlying pattern rules.
+
+## Configuration
+
+| Data | Stored in | Sharing |
+|---|---|---|
+| Global filters and enabled states | VS Code **User** settings | Eligible for Settings Sync |
+| Project filters | `.vscode/custom-search-filters.json` in each workspace root | Share by committing the file |
+| Checkboxes and pins | VS Code workspace state | Local; not synced or committed |
+
+Names must be unique within a scope; different projects and Global can reuse a name. Global filter definitions and enabled states use **User settings only**; workspace or folder overrides are ignored.
+
+### Global filters
+
+Merge these entries into your **User settings JSON**:
 
 ```json
-"workbench.colorCustomizations": {
-  "customSearchFilters.pinnedForeground": "#ff8800"
+{
+  "custom-search-filters.globalFilters": [
+    {
+      "name": "TypeScript",
+      "include": "**/*.ts",
+      "exclude": ""
+    },
+    {
+      "name": "Skip dependencies and builds",
+      "include": "",
+      "exclude": "**/node_modules/**,**/dist/**"
+    }
+  ],
+  "custom-search-filters.globalFiltersEnabled": {
+    "TypeScript": true,
+    "Skip dependencies and builds": true
+  }
 }
 ```
 
-The pin icon is always colored. The name is colored only while `explorer.decorations.colors` is enabled, which is the default.
+Global filters default to enabled. Set their name to `false` in `globalFiltersEnabled` to disable them.
 
-### How Searches Combine Pinned Filters
+### Project filters
 
-| Action | Search path fields get |
+Create `.vscode/custom-search-filters.json` in a project root:
+
+```json
+[
+  {
+    "name": "Source",
+    "include": "./src/**/*",
+    "exclude": "**/*.{test,spec}.ts",
+    "enabled": true
+  }
+]
+```
+
+Use a JSON array with no comments or trailing commas. Set `"enabled": false` to disable a project filter. Settings and project-file changes refresh the panel automatically.
+
+### Pin color
+
+Merge this optional customization into User settings:
+
+```json
+{
+  "workbench.colorCustomizations": {
+    "customSearchFilters.pinnedForeground": "#ff8800"
+  }
+}
+```
+
+The default follows the theme. The pin icon is colored; name coloring also requires `explorer.decorations.colors` to be enabled.
+
+## Command reference
+
+Open the Command Palette and type **Custom Search**.
+
+| Command | Purpose |
 |---|---|
-| **Apply Selected Filters** in the panel | Pinned filters + checked filters |
-| **Apply Selected Filters** with nothing checked | Pinned filters only |
-| **Select Filter and Search** | Pinned filters + the selected filter |
-| **Search Now**, **Save and Search** | Pinned filters + that filter |
+| **Add Filter** | Create a global or project filter |
+| **Select Filter and Search** | Apply one filter together with enabled pins |
+| **Show Filters Panel** | Open the checkbox panel |
+| **Apply Selected Filters** | Search with checked filters and enabled pins |
+| **Clear Filter Selection** | Clear checkboxes without applying |
+| **Refresh Filters** | Reload settings and project files |
+| **Edit Filter** | Edit or enable a saved filter |
+| **Delete Filter** | Remove a saved filter |
+| **Recover Legacy Filters** | Restore missing filters from retained legacy data |
 
-Pinned filters are combined with the same rules as the panel: includes match **any** pattern, and excludes take precedence. For example, with `Exclude build output` (`**/node_modules/**,**/dist/**`) pinned, selecting a `TypeScript` filter (`**/*.ts`) searches TypeScript files outside `node_modules` and `dist`. A pinned exclusion-only filter never broadens the include scope. The panel's **Include** and **Exclude** preview always includes the pinned filters.
+## Upgrading from 0.2.2
 
-### Pin Behavior
+Existing User settings and project JSON require no format conversion. Names and enabled states are preserved. Explicitly configured User settings, including an empty filter list, take precedence over legacy data. If you previously placed global-filter settings in workspace settings, move them to **User settings**.
 
-*   Pins are saved per workspace, like the panel's checkboxes. Pinning never changes settings or the project's `.vscode/custom-search-filters.json`, so it is not shared through Settings Sync or the repository.
-*   Pinning a checked filter clears its checkbox selection through every entry point. Unpinning leaves it unchecked; check it again to include it in the next panel Apply.
-*   Renaming a filter through the extension keeps its pin. Deleting a filter removes its pin.
-*   A disabled filter stays pinned but is not added automatically until it is enabled again. Explicitly choosing **Save and Search** still searches with the edited filter.
-*   A filter deleted by editing settings or the project file directly keeps its pin entry. A new filter with the same name and scope is then pinned automatically; unpin it if that is not wanted.
+If filters disappeared during an older migration, run **Custom Search: Recover Legacy Filters**. After confirmation, it adds missing names from a retained snapshot and preserves existing filters and enabled states. Recovery can restore intentionally deleted filters; use it only when needed. If no snapshot remains, the command reports that no legacy filters are available.
 
-## Adding Folders and File Types from the Explorer
+## Troubleshooting
 
-Right-click one or more folders or files in the Explorer and open the **Search Filters** submenu, next to **Find in Folder...**:
+| Symptom | What to check |
+|---|---|
+| Checking a filter has no effect on search | Click **Apply Selected Filters** after reviewing the preview. |
+| Search includes more files than expected | Inspect pinned filters and **All Workspace Files**. Multiple includes use OR. |
+| Files are missing, even with **All Workspace Files** | Check **Exclude**, `.gitignore`, `files.exclude`, `search.exclude`, and the Search view's **Use Exclude Settings and Ignore Files** toggle. [VS Code search options](https://code.visualstudio.com/docs/editing/codebasics#advanced-search-options). |
+| Project filters fail to load | Correct the reported JSON file or read permissions, then refresh. The panel retains its previous filters and selections; search and edits that reload filters stop until the file is readable. |
+| A deleted filter becomes pinned when recreated | Direct edits to settings or JSON retain the pin identity. Unpin the recreated filter; deleting through the extension removes its pin. |
 
-| Selection | Commands | Pattern added |
-|---|---|---|
-| Folders | **Include Folder...**, **Exclude Folder...** | `./src/utils/**/*` in project filters |
-| Files with an extension | **Include File Type...**, **Exclude File Type...** | `**/*.ts` |
+Applying filters preserves regex, case-sensitive, and whole-word options. VS Code controls search focus and may use selected editor text as the query. The `search.mode` setting determines whether results open in the Search view or a Search Editor; use `"search.mode": "view"` for the sidebar.
 
-Project folder selections are stored as explicit relative paths (e.g., `./src/**/*`) and qualified with the current workspace folder name when searching a workspace file (e.g., `./frontend/src/**/*`). They keep working when the project is opened alone. Plain project globs such as `*.ts`, `.ts`, or `src/**/*` retain VS Code's recursive matching within that project; use `./src/**/*` to target only its root-level `src` directory. Home-relative paths such as `~/projects/lib` remain usable when combining filters. Global filters created from Explorer folders keep explicit workspace prefixes where needed. Use a global filter when selecting folders across multiple roots. These commands work on the Explorer selection, so they are not listed in the Command Palette.
+## Development
 
-1.  A picker titled with the patterns being added (e.g., `Exclude 2 folders: dist/**/*, out/**/*`) lists **New Filter...** and your global filters plus the project filters of the selected folder's workspace root.
-2.  Select a filter to **append** the patterns. Patterns already present are skipped, and a filter that already contains all of them is marked and left unchanged. To replace the existing patterns instead, use the replace button on the filter's entry.
-3.  If a pattern being added is already in the filter's other list (for example, adding `src/**/*` to exclude while it is in include), it is moved out of that list so the exact pattern is not both included and excluded. The picker shows this before you choose.
-4.  The confirmation offers **Search Now**, **Edit Filter**, and **Undo**. Undo refuses to overwrite a later edit or restore a deleted filter.
+Run from the repository root:
 
-**New Filter...** asks for the scope (folders default to the current project, file types to global), then for a name with a suggestion such as `src` or `Exclude *.log files`, validated as you type.
+| Command | Purpose |
+|---|---|
+| `npm ci` | Install locked development dependencies |
+| `npm run compile` | Compile TypeScript into `out/` |
+| `npm run watch` | Recompile as source files change |
+| `npm run lint` | Check source with ESLint |
+| `npm test` | Compile, lint, and run extension-host tests |
 
-## Editing Filters
+In VS Code, select **Run Custom Search Filters** in **Run and Debug**, then press **F5**. The launch configuration compiles the extension and opens an **Extension Development Host**. Set breakpoints in `src/`.
 
-The filter editor lists the filter's fields with their current values, so you only touch what you want to change:
+The `vscode` API is supplied by that host. Running `node out/extension.js` or using **Run Code** on the entry file produces `Cannot find module 'vscode'`. Tests may download VS Code and exercise native search in temporary single-folder and multi-root workspaces.
 
-*   **Name**, **Include**, **Exclude**: select a field to edit it in a prefilled input box. Names are validated as you type, including duplicates in the same scope. Press Enter to keep the change or Escape to leave the field as it was.
-*   For an include or exclude list with several comma-separated patterns, you can edit it as text or choose the patterns to keep from a checklist; unchecking a pattern removes it.
-*   **Enabled**: select it to toggle whether the filter appears in **Select Filter and Search**.
-*   **Pinned**: select it to toggle whether the filter is added to every search in this workspace (see [Pinned Filters](#pinned-filters)).
-*   Changed fields are marked `● modified`. Nothing is written until you choose **Save** or **Save and Search**; the latter saves and immediately runs a search with the updated filter.
-*   **Discard Changes** (or Escape, after confirmation) leaves the filter untouched.
-
-When the editor is opened from the search list, the list reopens after you save or discard.
-
-## Filter Scope and Storage
-
-Filters can be saved with two different scopes:
-
-### Global Filters
-*   **Scope**: Available across all projects and workspaces
-*   **Storage Location**: Stored in VS Code user settings
-    *   Filter definitions: `custom-search-filters.globalFilters`
-    *   Enable/disable states: `custom-search-filters.globalFiltersEnabled`
-*   **Sync**: Can be synced across devices using VS Code Settings Sync
-*   **Enable/Disable**: You can enable or disable global filters in VS Code settings. Disabled filters will not appear in the filter selection list
-*   **Default State**: All global filters are enabled by default
-*   **User Settings Only**: Global filters and their enabled states are read from and written to user settings. Values for these settings in workspace or folder settings are ignored, so they are never copied into your user settings.
-
-During upgrades, existing global filter settings are preserved, including an explicitly empty list. Legacy filters are imported only when the user setting has not been configured.
-
-### Upgrading from 0.2.2
-
-Version 1.0.1 keeps the existing user settings and workspace JSON format, including stored names and disabled states. No manual conversion is required.
-
-If filters were lost during an earlier migration, run **Custom Search: Recover Legacy Filters** from the Command Palette. After confirmation, it restores missing names from the legacy snapshot into user settings, preserving existing filters and enabled states. Recovery may bring back previously deleted filters, so use it only when needed. The snapshot is retained for retrying recovery; if none remains, the command reports that nothing can be recovered.
-
-### Workspace Filters
-*   **Scope**: Only available in the current workspace/project
-*   **Storage Location**: Stored in `.vscode/custom-search-filters.json` in the project root directory
-*   **Sync**: Included in the project repository (if committed), making them available to all team members
-*   **Enable/Disable**: Visible by default. Set `"enabled": false` on a filter in `.vscode/custom-search-filters.json` to hide it from the filter selection list; editing the filter keeps that setting
-
-When creating a new filter, you'll be prompted to choose between Global or Workspace scope. The filter list displays both types with VS Code icons: globe for Global and folder for Workspace.
-
-### Panel Selection and Pins
-*   **Scope**: Per workspace, for both global and workspace filters
-*   **Storage Location**: VS Code workspace state, not settings or project files
-*   **Sync**: Not synced and not shared with team members
-
-## Development and Debugging
-
-Open this repository folder in VS Code and run `npm ci` once to install development dependencies. In **Run and Debug**, select **Run Custom Search Filters** and press **F5**. The launch configuration compiles TypeScript and opens an **Extension Development Host**. Open a project in that window and run **Custom Search: Show Filters Panel** to exercise the extension. Breakpoints can be set in `src/`.
-
-The `vscode` module is provided by the extension host. Running `node out/extension.js` or using **Run Code** on the entry file cannot load that API. See the [VS Code extension debugging guide](https://code.visualstudio.com/api/get-started/your-first-extension).
-
-Run `npm test` for compilation, linting, and extension host tests, including native search results in temporary single-folder and multi-root workspaces.
-
-**Enjoy!**
+[Report an issue](https://github.com/EWYan/custom-search-filters/issues) with the extension/VS Code versions, workspace layout, relevant patterns, and steps to reproduce. See the [changelog](CHANGELOG.md) for release details. Licensed under [MIT](LICENSE).
