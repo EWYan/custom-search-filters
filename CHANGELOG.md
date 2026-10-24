@@ -105,3 +105,7 @@ All notable changes to the "custom-search-filters" extension will be documented 
 ### Changed
 
 - Reorganize the user guide with quick-start steps, configuration examples, native search-clearing instructions, and troubleshooting, and add a Simplified Chinese translation.
+
+### Fixed
+
+- Resize the extension icon to 256 x 256 pixels to stay below the Marketplace's 1024 KB image limit.
