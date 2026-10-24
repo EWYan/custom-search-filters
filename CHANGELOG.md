@@ -109,3 +109,9 @@ All notable changes to the "custom-search-filters" extension will be documented 
 ### Fixed
 
 - Resize the extension icon to 256 x 256 pixels to stay below the Marketplace's 1024 KB image limit.
+
+## [1.1.2] - 2026-10-24
+
+### Changed
+
+- Ship the finalized transparent blue icon at 256 x 256 pixels (about 20 KB) with the bilingual user guides.
